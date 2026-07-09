@@ -7,3 +7,5 @@ data/*.json
 .DS_Store
 .netlify/
 __rt-test-old.mjs
+__test-sheets-build-done.mjs
+testfile123-renamed.txt
