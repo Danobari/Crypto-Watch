@@ -18,13 +18,21 @@
         <h1>CryptoTracker</h1>
       </div>
       <nav>
-        <a href="#overview" class="nav-item active" id="nav-overview">
+        <a href="#portfolio" class="nav-item active" id="nav-portfolio">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M2 12h20"></path><circle cx="12" cy="12" r="10"></circle></svg>
+          Cartera
+        </a>
+        <a href="#overview" class="nav-item" id="nav-overview">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
           Saldos
         </a>
         <a href="#market" class="nav-item" id="nav-market">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
           Mercado (Tracker)
+        </a>
+        <a href="#cycle" class="nav-item" id="nav-cycle">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M12 1v6m0 10v6m11-11h-6M7 12H1m17.7-6.7l-4.2 4.2M9.5 14.5l-4.2 4.2M18.7 18.7l-4.2-4.2M9.5 9.5L5.3 5.3"></path></svg>
+          Ciclo de Mercado
         </a>
         <a href="#rules" class="nav-item" id="nav-rules">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
@@ -45,7 +53,7 @@
 
     <main class="main-content">
       <header>
-        <h2 id="section-title">Saldos</h2>
+        <h2 id="section-title">Cartera</h2>
         <div class="header-actions">
           <button id="add-rule-btn" class="btn btn-primary glass-panel" style="display: none;">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
@@ -58,8 +66,33 @@
         </div>
       </header>
 
+      <!-- Section: Cartera (posiciones con P&L en vivo) -->
+      <section id="portfolio-section" class="content-section active">
+        <div class="glass-panel table-container">
+          <table id="portfolio-table">
+            <thead>
+              <tr>
+                <th>Activo</th>
+                <th>Bloque</th>
+                <th>Cantidad</th>
+                <th>Entrada</th>
+                <th>Actual</th>
+                <th>% Cambio</th>
+                <th>Valor</th>
+                <th>% Vendido</th>
+                <th>Próxima Acción</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="portfolio-tbody">
+              <tr><td colspan="10" class="text-center">Cargando cartera...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <!-- Section: Overview / Balances -->
-      <section id="overview-section" class="content-section active">
+      <section id="overview-section" class="content-section">
         <div class="cards-grid" id="balances-grid">
           <div class="loading-state">Cargando saldos...</div>
         </div>
@@ -69,6 +102,13 @@
       <section id="market-section" class="content-section">
         <div class="cards-grid" id="market-grid">
           <div class="loading-state">Cargando mercado en tiempo real...</div>
+        </div>
+      </section>
+
+      <!-- Section: Ciclo de Mercado -->
+      <section id="cycle-section" class="content-section">
+        <div class="cards-grid" id="cycle-grid">
+          <div class="loading-state">Consultando ciclo de mercado...</div>
         </div>
       </section>
 
@@ -158,6 +198,20 @@
             <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center;">Guardar Regla</button>
           </div>
         </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal para Preparar Orden -->
+  <div class="modal-overlay" id="order-modal">
+    <div class="modal glass-panel">
+      <div class="modal-header">
+        <h3 id="order-modal-title">Preparar Orden</h3>
+        <button class="close-btn" id="close-order-modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="order-modal-body">Calculando...</div>
+        <div class="modal-footer" id="order-modal-footer" style="display:flex; gap:0.75rem; flex-wrap: wrap;"></div>
       </div>
     </div>
   </div>

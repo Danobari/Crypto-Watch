@@ -1,0 +1,123 @@
+[
+  {
+    "coin": "BTC",
+    "block": "core",
+    "entryPrice": 103340,
+    "notes": "Base del portafolio. Se le da más margen antes de tomar ganancias.",
+    "levels": [
+      {
+        "pct": 50,
+        "sellPct": 20,
+        "sold": false,
+        "soldAt": null
+      },
+      {
+        "pct": 100,
+        "sellPct": 20,
+        "sold": false
+      },
+      {
+        "pct": 150,
+        "sellPct": 0,
+        "sold": false,
+        "action": "No vender automático — evaluar trailing stop dinámico (ATR)"
+      }
+    ]
+  },
+  {
+    "coin": "ETH",
+    "block": "core",
+    "entryPrice": 2726,
+    "notes": "Base del portafolio. Se le da más margen antes de tomar ganancias.",
+    "levels": [
+      {
+        "pct": 50,
+        "sellPct": 20,
+        "sold": false
+      },
+      {
+        "pct": 100,
+        "sellPct": 20,
+        "sold": false
+      },
+      {
+        "pct": 150,
+        "sellPct": 0,
+        "sold": false,
+        "action": "No vender automático — evaluar trailing stop dinámico (ATR)"
+      }
+    ]
+  },
+  {
+    "coin": "XRP",
+    "block": "rotation",
+    "entryPrice": 2.31,
+    "notes": "Candidato principal de rotación de capital hacia BTC/ETH/stables.",
+    "levels": [
+      {
+        "pct": 40,
+        "sellPct": 20,
+        "sold": false
+      },
+      {
+        "pct": 80,
+        "sellPct": 20,
+        "sold": false
+      },
+      {
+        "pct": 120,
+        "sellPct": 0,
+        "sold": false,
+        "action": "No vender automático — evaluar trailing stop dinámico (ATR)"
+      }
+    ]
+  },
+  {
+    "coin": "XLM",
+    "block": "experimental",
+    "entryPrice": 0.251,
+    "notes": "Bloque experimental — objetivo es recuperar capital rápido.",
+    "levels": [
+      {
+        "pct": 25,
+        "sellPct": 25,
+        "sold": false
+      },
+      {
+        "pct": 50,
+        "sellPct": 25,
+        "sold": false
+      },
+      {
+        "pct": 75,
+        "sellPct": 0,
+        "sold": false,
+        "action": "No vender automático — evaluar trailing stop dinámico (ATR)"
+      }
+    ]
+  },
+  {
+    "coin": "ALGO",
+    "block": "experimental",
+    "entryPrice": 0.176,
+    "notes": "Bloque experimental — objetivo es recuperar capital rápido.",
+    "levels": [
+      {
+        "pct": 25,
+        "sellPct": 25,
+        "sold": false
+      },
+      {
+        "pct": 50,
+        "sellPct": 25,
+        "sold": false
+      },
+      {
+        "pct": 75,
+        "sellPct": 0,
+        "sold": false,
+        "action": "No vender automático — evaluar trailing stop dinámico (ATR)"
+      }
+    ]
+  }
+]

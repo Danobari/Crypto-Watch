@@ -65,19 +65,62 @@ la terminal, algunas opciones simples:
 - Un VPS pequeño (Railway, Fly.io, una Raspberry Pi en casa) si prefieres que
   no dependa de que tu computadora esté encendida
 
+## Cartera (data/positions.json)
+
+Esta es la pieza central: reemplaza al Tracker.xlsx manual. Cada posición
+tiene tu precio de entrada real, un bloque (`core` / `rotation` /
+`experimental`) y una escalera de niveles de toma de ganancias con su %
+de venta sugerido. La pestaña **Cartera** del dashboard calcula en vivo,
+por posición: precio actual, % de cambio desde tu entrada, valor actual,
+% ya vendido y la próxima acción — sin que tengas que calcular nada a mano.
+
+Los bloques traen niveles distintos por defecto (puedes ajustarlos editando
+`data/positions.json` o vía `PUT /api/positions/:coin`):
+
+- **Core** (BTC, ETH): +50% / +100% / +150% — se les da más margen.
+- **Rotación** (ej. XRP): +40% / +80% / +120% — el esquema original.
+- **Experimental** (ej. ALGO, XLM): +25% / +50% / +75% — toma de ganancias
+  más rápida.
+
+El último nivel de cada escalera nunca vende automáticamente — el
+sistema solo te recuerda evaluar un trailing stop dinámico (ATR) en vez de
+un porcentaje fijo, tal como se acordó en la estrategia.
+
+Cuando el precio cruza un nivel no vendido, `crypto-watch` te manda el
+mismo correo de siempre y además queda visible en el dashboard con un
+botón **Preparar Orden**: calcula cantidad, símbolo, valor aproximado y una
+reserva orientativa para impuestos, te deja copiar la cantidad al
+portapapeles y abre el par correspondiente en Binance para que la coloques
+tú mismo. **Nunca coloca la orden — solo prepara los números.** Cuando la
+ejecutes, marca el nivel como "vendido" en el dashboard para que no te
+vuelva a avisar de lo mismo.
+
+## Ciclo de Mercado
+
+Pestaña con dominancia de BTC y el ratio ETH/BTC (fuente: CoinGecko +
+Binance), pensada para la revisión táctica de los viernes. Incluye un link
+directo al índice de Altseason completo — el cálculo real de ese índice
+(90 días, top 100 monedas) no se replica aquí, solo se linkea.
+
 ## Siguientes pasos con Claude Code o Codex
 
 Este es un punto de partida funcional, no el proyecto terminado. Cosas
 razonables para pedirle a Claude Code o Codex desde aquí:
 
-- Revisar y ajustar `data/rules.json` con el resto de tu estrategia.
+- Revisar y ajustar `data/rules.json` y `data/positions.json` con el resto
+  de tu estrategia.
 - Agregar más tipos de condición si tu estrategia los necesita (medias
-  móviles, RSI, volumen, etc. — hoy solo cubre precio y cambio 24h).
+  móviles, RSI, volumen, etc. — hoy solo cubre precio, cambio 24h y % desde
+  tu entrada).
+- Implementar el trailing stop dinámico (ATR) para el último nivel de cada
+  posición, en vez de solo recordarte evaluarlo.
 - Cambiar el canal de aviso (Telegram, WhatsApp, Slack) si prefieres algo
   distinto a correo.
 - Ponerlo a correr de forma permanente en tu máquina o en un servidor.
-- Agregar una vista web simple para ver el registro de avisos sin tener que
-  abrir `data/alerts-log.json` a mano.
+- Si agregas una API de OpenAI, un buen primer uso es generar un resumen en
+  lenguaje natural de la revisión semanal (viernes) a partir de
+  `/api/portfolio` y `/api/cycle`, en vez de tener que interpretar los
+  números tú mismo.
 
 ## Seguridad
 
