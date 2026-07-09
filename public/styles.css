@@ -23,9 +23,14 @@ body {
   font-family: var(--font-main);
   background-color: var(--bg-dark);
   color: var(--text-primary);
-  background-image: 
-    radial-gradient(circle at 15% 50%, rgba(59, 130, 246, 0.08), transparent 25%),
-    radial-gradient(circle at 85% 30%, rgba(16, 185, 129, 0.08), transparent 25%);
+  background-image:
+    radial-gradient(circle at 15% 50%, rgba(59, 130, 246, 0.10), transparent 25%),
+    radial-gradient(circle at 85% 30%, rgba(16, 185, 129, 0.08), transparent 25%),
+    linear-gradient(180deg, rgba(10, 14, 23, 0.55), rgba(10, 14, 23, 0.85) 45%, var(--bg-dark) 85%),
+    url('assets/hero-space-bg.webp');
+  background-size: auto, auto, cover, cover;
+  background-position: center, center, center top, center top;
+  background-repeat: no-repeat;
   background-attachment: fixed;
   min-height: 100vh;
   display: flex;
@@ -65,11 +70,10 @@ body {
 }
 
 .logo-icon {
-  width: 36px;
-  height: 36px;
-  background: linear-gradient(135deg, var(--accent-color), #8b5cf6);
-  border-radius: 12px;
-  box-shadow: 0 0 20px var(--accent-glow);
+  height: 38px;
+  width: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 0 10px var(--accent-glow));
 }
 
 .logo h1 {
@@ -153,18 +157,6 @@ header {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 2.5rem;
-  padding: 2.25rem 2.5rem;
-  border-radius: 20px;
-  border: 1px solid var(--border-glass);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.35);
-  background-image:
-    linear-gradient(120deg, rgba(10, 14, 23, 0.75), rgba(10, 14, 23, 0.35) 55%, rgba(10, 14, 23, 0.75)),
-    url('assets/hero-space-bg.webp');
-  background-size: cover;
-  background-position: center 35%;
-  background-repeat: no-repeat;
-  position: relative;
-  overflow: hidden;
 }
 
 .header-actions {
