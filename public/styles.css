@@ -153,6 +153,18 @@ header {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 2.5rem;
+  padding: 2.25rem 2.5rem;
+  border-radius: 20px;
+  border: 1px solid var(--border-glass);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.35);
+  background-image:
+    linear-gradient(120deg, rgba(10, 14, 23, 0.75), rgba(10, 14, 23, 0.35) 55%, rgba(10, 14, 23, 0.75)),
+    url('assets/hero-space-bg.webp');
+  background-size: cover;
+  background-position: center 35%;
+  background-repeat: no-repeat;
+  position: relative;
+  overflow: hidden;
 }
 
 .header-actions {
