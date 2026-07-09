@@ -95,12 +95,49 @@ tú mismo. **Nunca coloca la orden — solo prepara los números.** Cuando la
 ejecutes, marca el nivel como "vendido" en el dashboard para que no te
 vuelva a avisar de lo mismo.
 
+## Trailing Stop Dinámico (ATR)
+
+Cuando el precio de una posición cruza el último nivel de su escalera (el
+que dice "no vender automático"), el sistema arma un trailing stop basado
+en ATR14 (rango real promedio de 14 días, con el suavizado de Wilder — el
+estándar para esto) en vez de un porcentaje fijo:
+
+```
+stop = máximo de precio alcanzado − (ATR14 × multiplicador)
+```
+
+El multiplicador depende de la fase de ciclo que definas en la pestaña
+**Ciclo de Mercado** (ver abajo): más ceñido en Euforia/Distribución
+(protege más rápido), más holgado en Acumulación (deja correr más). El ATR
+se recalcula como máximo cada 12 horas para no golpear la API de Binance
+sin necesidad.
+
+Cuando el precio cae por debajo del stop, te llega el correo de siempre y
+en el dashboard aparece un botón para preparar la orden de salida (mismo
+patrón que los niveles: cantidad, valor, link a Binance, copiar cantidad).
+**Sigue sin colocar nada — solo avisa y calcula.** Una vez ejecutes la
+venta, hay un botón para reiniciar el trailing stop de esa posición.
+
 ## Ciclo de Mercado
 
-Pestaña con dominancia de BTC y el ratio ETH/BTC (fuente: CoinGecko +
-Binance), pensada para la revisión táctica de los viernes. Incluye un link
-directo al índice de Altseason completo — el cálculo real de ese índice
-(90 días, top 100 monedas) no se replica aquí, solo se linkea.
+Pestaña con dominancia de BTC, el ratio ETH/BTC (fuente: CoinGecko +
+Binance) y el score agregado **CBBI** (ColinTalksCrypto Bitcoin Bull Run
+Index, `colintalkscrypto.com/cbbi` — 9 indicadores on-chain combinados en
+un solo número de 0 a 100, gratis y de código abierto). El CBBI es
+puramente informativo: nunca dispara nada por sí solo, solo te da una
+segunda opinión cuantitativa junto a tu análisis cualitativo. Incluye
+también un link directo al índice de Altseason completo — el cálculo real
+de ese índice (90 días, top 100 monedas) no se replica aquí, solo se
+linkea.
+
+Además hay un campo de **fase de ciclo manual**: aquí pegas la lectura de
+tu GPT de indicadores on-chain (Pi Cycle Top, Puell, MVRV Z-Score, NUPL,
+RHODL, Reserve Risk, 2Y MA Multiplier, Mayer, Golden Ratio) como una de
+seis fases (Acumulación / Alcista temprano / Neutral / Euforia /
+Distribución / Bajista). Esa fase es la que ajusta el multiplicador del
+trailing stop de todas tus posiciones — es la forma en que ese análisis
+más profundo se conecta con la parte automática del dashboard, sin tener
+que recalcular los 9 indicadores aquí.
 
 ## Siguientes pasos con Claude Code o Codex
 
@@ -112,8 +149,9 @@ razonables para pedirle a Claude Code o Codex desde aquí:
 - Agregar más tipos de condición si tu estrategia los necesita (medias
   móviles, RSI, volumen, etc. — hoy solo cubre precio, cambio 24h y % desde
   tu entrada).
-- Implementar el trailing stop dinámico (ATR) para el último nivel de cada
-  posición, en vez de solo recordarte evaluarlo.
+- Traer automáticamente más de los 9 indicadores del CBBI de forma
+  individual (hoy solo se usa el score agregado), si quieres el detalle de
+  cada uno en vez de solo el número final.
 - Cambiar el canal de aviso (Telegram, WhatsApp, Slack) si prefieres algo
   distinto a correo.
 - Ponerlo a correr de forma permanente en tu máquina o en un servidor.

@@ -166,6 +166,50 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
+  window.openTrailingOrderModal = async function (coin) {
+    orderModal.classList.add('active');
+    document.getElementById('order-modal-title').textContent = `${coin} — Trailing Stop`;
+    const body = document.getElementById('order-modal-body');
+    const footer = document.getElementById('order-modal-footer');
+    body.innerHTML = 'Calculando orden...';
+    footer.innerHTML = '';
+
+    try {
+      const res = await fetch(`/api/portfolio/${coin}/trailing-order`);
+      const order = await res.json();
+      if (order.error) { body.innerHTML = `<span style="color: var(--danger-color)">${order.error}</span>`; return; }
+
+      body.innerHTML = `
+        <div style="display:flex; flex-direction:column; gap:0.75rem;">
+          <div style="color:var(--danger-color); font-weight:600;">Trailing stop disparado — considera cerrar la posición.</div>
+          <div><span style="color:var(--text-secondary)">Lado:</span> <strong>VENTA</strong></div>
+          <div><span style="color:var(--text-secondary)">Símbolo:</span> <strong>${order.symbol}</strong></div>
+          <div><span style="color:var(--text-secondary)">Cantidad sugerida:</span> <strong>${order.quantity.toFixed(6)}</strong> ${coin}</div>
+          <div><span style="color:var(--text-secondary)">Precio referencia:</span> $${order.referencePrice.toFixed(4)}</div>
+          <div><span style="color:var(--text-secondary)">Valor aproximado:</span> $${order.approxValueUSD.toFixed(2)}</div>
+          <div style="color:var(--text-secondary); font-size:0.875rem;">Reserva sugerida para impuestos (30%, orientativo): ~$${order.taxReserveSugerida.toFixed(2)}</div>
+          <div style="font-size:0.875rem; color:var(--text-secondary); margin-top:0.5rem;">Tú decides si la colocas y a qué precio — esto no ejecuta nada en Binance.</div>
+        </div>
+      `;
+      footer.innerHTML = `
+        <button class="btn glass-panel" id="copy-trail-qty-btn">Copiar cantidad</button>
+        <a class="btn btn-primary" href="${order.binanceLink}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;">Abrir en Binance</a>
+        <button class="btn glass-panel" id="reset-trail-btn">Ya la ejecuté (reiniciar)</button>
+      `;
+      document.getElementById('copy-trail-qty-btn').addEventListener('click', () => {
+        navigator.clipboard.writeText(order.quantity.toFixed(6));
+        document.getElementById('copy-trail-qty-btn').textContent = 'Copiado ✓';
+      });
+      document.getElementById('reset-trail-btn').addEventListener('click', async () => {
+        await fetch(`/api/positions/${coin}/trailing-stop/reset`, { method: 'POST' });
+        orderModal.classList.remove('active');
+        loadPortfolio();
+      });
+    } catch (e) {
+      body.innerHTML = `<span style="color: var(--danger-color)">Error de conexión</span>`;
+    }
+  };
+
   // Data Loading
   async function loadData(tab) {
     if (tab === 'portfolio') await loadPortfolio();
@@ -178,12 +222,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadPortfolio() {
     const tbody = document.getElementById('portfolio-tbody');
-    tbody.innerHTML = '<tr><td colspan="10" class="text-center">Cargando cartera...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11" class="text-center">Cargando cartera...</td></tr>';
     try {
       const res = await fetch('/api/portfolio');
       const data = await res.json();
-      if (data.error) return tbody.innerHTML = `<tr><td colspan="10" style="color: var(--danger-color)">Error: ${data.error}</td></tr>`;
-      if (data.length === 0) return tbody.innerHTML = '<tr><td colspan="10" class="text-center">Sin posiciones en data/positions.json</td></tr>';
+      if (data.error) return tbody.innerHTML = `<tr><td colspan="11" style="color: var(--danger-color)">Error: ${data.error}</td></tr>`;
+      if (data.length === 0) return tbody.innerHTML = '<tr><td colspan="11" class="text-center">Sin posiciones en data/positions.json</td></tr>';
 
       const blockLabels = { core: 'Core', rotation: 'Rotación', experimental: 'Experimental' };
 
@@ -196,6 +240,18 @@ document.addEventListener('DOMContentLoaded', () => {
               ? `<button class="btn glass-panel" style="padding:0.4rem 0.9rem; font-size:0.8rem;" onclick="openOrderModal('${p.coin}', ${p.levels.findIndex(l => l.pct === p.pendienteInfo.pct)}, ${p.pendienteInfo.pct})">Ver nivel +${p.pendienteInfo.pct}%</button>`
               : '<span class="badge inactive">Completo</span>');
 
+        let trailingCell = '<span style="color:var(--text-secondary); font-size:0.85rem;">No armado</span>';
+        if (p.trailingStop && p.trailingStop.armed) {
+          if (p.trailingStop.triggered) {
+            trailingCell = `<button class="btn btn-danger" style="padding:0.4rem 0.9rem; font-size:0.8rem;" onclick="openTrailingOrderModal('${p.coin}')">¡Disparado! Ver orden</button>`;
+          } else {
+            trailingCell = `<div style="font-size:0.8rem;">
+              Stop: $${p.trailingStop.stopPrice !== null ? p.trailingStop.stopPrice.toFixed(4) : '—'}<br>
+              <span style="color:var(--text-secondary)">Máx: $${p.trailingStop.peakPrice.toFixed(4)} · ATR x${p.trailingStop.multiplier || '—'}</span>
+            </div>`;
+          }
+        }
+
         return `
           <tr>
             <td><strong>${p.coin}</strong>${p.notes ? `<div style="font-size:0.75rem; color:var(--text-secondary); max-width:220px;">${p.notes}</div>` : ''}</td>
@@ -207,11 +263,12 @@ document.addEventListener('DOMContentLoaded', () => {
             <td>${p.valorActual !== null ? '$' + p.valorActual.toFixed(2) : '—'}</td>
             <td>${p.pctVendido}%</td>
             <td style="font-size:0.85rem;">${p.proximaAccion}</td>
+            <td>${trailingCell}</td>
             <td>${actionBtn}</td>
           </tr>
         `;
       }).join('');
-    } catch (e) { tbody.innerHTML = `<tr><td colspan="10" style="color: var(--danger-color)">Error de conexión</td></tr>`; }
+    } catch (e) { tbody.innerHTML = `<tr><td colspan="11" style="color: var(--danger-color)">Error de conexión</td></tr>`; }
   }
 
   async function loadBalances() {
@@ -282,14 +339,49 @@ document.addEventListener('DOMContentLoaded', () => {
           <div class="crypto-amount">${data.ethBtcRatio !== null ? data.ethBtcRatio.toFixed(5) : '—'}</div>
           <div class="crypto-value">BTC 24h: ${data.btcChange24h !== null ? data.btcChange24h.toFixed(2) + '%' : '—'} · ETH 24h: ${data.ethChange24h !== null ? data.ethChange24h.toFixed(2) + '%' : '—'}</div>
         </div>
+        <div class="crypto-card glass-panel">
+          <div class="card-header"><span class="crypto-symbol">CBBI (score agregado)</span></div>
+          <div class="crypto-amount">${data.cbbi ? data.cbbi.score.toFixed(0) + '/100' : '—'}</div>
+          <div class="crypto-value">${data.cbbi ? data.cbbi.label : 'Sin datos'} · solo informativo, no dispara nada</div>
+        </div>
         <div class="crypto-card glass-panel" style="grid-column: 1 / -1;">
           <div class="card-header"><span class="crypto-symbol">Lectura rápida</span></div>
           <div class="crypto-value" style="font-size:1rem; margin-top:0.5rem;">${data.signal}</div>
           <div style="margin-top:1rem;"><a href="${data.altseasonIndexLink}" target="_blank" rel="noopener noreferrer" style="color:var(--accent-color);">Ver índice completo de Altseason →</a></div>
         </div>
       `;
+
+      if (data.cyclePhase) {
+        document.getElementById('cycle-phase-select').value = data.cyclePhase.phase || 'neutral';
+        document.getElementById('cycle-phase-notes').value = data.cyclePhase.notes || '';
+        document.getElementById('cycle-phase-updated').textContent = data.cyclePhase.updatedAt
+          ? `Última actualización: ${new Date(data.cyclePhase.updatedAt).toLocaleString()}`
+          : 'Todavía no se ha actualizado.';
+      }
     } catch (e) { grid.innerHTML = `<div class="loading-state" style="color: var(--danger-color)">Error de conexión</div>`; }
   }
+
+  document.getElementById('save-cycle-phase-btn').addEventListener('click', async () => {
+    const btn = document.getElementById('save-cycle-phase-btn');
+    btn.textContent = 'Guardando...';
+    try {
+      const res = await fetch('/api/cycle-phase', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phase: document.getElementById('cycle-phase-select').value,
+          notes: document.getElementById('cycle-phase-notes').value,
+          source: 'manual (GPT indicadores on-chain)',
+        }),
+      });
+      const data = await res.json();
+      document.getElementById('cycle-phase-updated').textContent = `Última actualización: ${new Date(data.updatedAt).toLocaleString()}`;
+    } catch (e) {
+      alert('Error al guardar la fase');
+    } finally {
+      btn.textContent = 'Guardar fase';
+    }
+  });
 
   async function loadRules() {
     const tbody = document.querySelector('#rules-table tbody');

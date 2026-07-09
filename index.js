@@ -4,8 +4,17 @@ import { getAccountBalances, getTickers24h } from './binance.js';
 import { readJSON, writeJSON } from './store.js';
 import { sendAlertEmail } from './notify.js';
 import { evaluateRule, symbolFor } from './rules.js';
-import { evaluateLadder, suggestedOrder } from './ladder.js';
+import {
+  evaluateLadder,
+  suggestedOrder,
+  changePctFromEntry,
+  shouldTrack,
+  updateTrailingStop,
+} from './ladder.js';
+import { getATR, atrMultiplierForPhase } from './cycle.js';
 import { startServer } from './server.js';
+
+const ATR_REFRESH_MS = 12 * 60 * 60 * 1000; // recalcular ATR cada 12h como máximo
 
 const INTERVAL = Number(process.env.CHECK_INTERVAL_MINUTES || 5);
 
@@ -62,6 +71,9 @@ async function tick() {
     }
   }
 
+  const cyclePhase = await readJSON('cycle-phase.json', { phase: 'neutral' });
+  let positionsChanged = false;
+
   // Escalera de toma de beneficios por posición (data/positions.json).
   for (const position of positions) {
     const ticker = tickers[symbolFor(position.coin)];
@@ -95,6 +107,53 @@ async function tick() {
         log.unshift({ ruleId: stateKey, message: body, time: new Date().toISOString() });
       }
     }
+
+    // Trailing stop dinámico (ATR) — solo se activa una vez el precio cruza
+    // el último nivel de la escalera (zona de "no vender automático").
+    const changePct = changePctFromEntry(position.entryPrice, ticker.price);
+    if (shouldTrack(position, changePct) && !(position.trailingStop && position.trailingStop.triggered)) {
+      const needsATR =
+        !position.trailingStop ||
+        !position.trailingStop.atrUpdatedAt ||
+        Date.now() - new Date(position.trailingStop.atrUpdatedAt).getTime() > ATR_REFRESH_MS;
+
+      let atr = position.trailingStop ? position.trailingStop.atr : null;
+      if (needsATR) {
+        try {
+          atr = await getATR(symbolFor(position.coin));
+        } catch (e) {
+          console.error(`No se pudo calcular ATR de ${position.coin}:`, e.message);
+        }
+      }
+
+      const multiplier = atrMultiplierForPhase(cyclePhase.phase);
+      const { trailingStop, justTriggered } = updateTrailingStop(position, ticker.price, atr, multiplier);
+      trailingStop.atrUpdatedAt = needsATR ? new Date().toISOString() : (position.trailingStop ? position.trailingStop.atrUpdatedAt : null);
+      position.trailingStop = trailingStop;
+      positionsChanged = true;
+
+      const trailKey = `trail:${position.coin}`;
+      if (justTriggered && !triggeredState[trailKey]) {
+        triggeredState[trailKey] = true;
+        const sellPct = position.trailingSellPct || 100;
+        const order = suggestedOrder(position.coin, holdingAmount, sellPct, ticker.price);
+        const body =
+          `${position.coin} rompió su trailing stop dinámico: precio actual $${ticker.price.toFixed(4)},` +
+          ` máximo reciente $${trailingStop.peakPrice.toFixed(4)}, stop en $${trailingStop.stopPrice.toFixed(4)}` +
+          ` (ATR14 x${multiplier}).` +
+          `\n\nOrden sugerida: VENTA ${order.quantity.toFixed(6)} ${position.coin}` +
+          ` (~$${order.approxValueUSD.toFixed(2)}) en ${order.symbol}, precio referencia $${order.referencePrice.toFixed(2)}.` +
+          `\nAbrir en Binance: ${order.binanceLink}` +
+          `\nTú decides si la colocas y a qué precio — esto no ejecuta nada en Binance.`;
+        console.log(body);
+        await sendAlertEmail(`[crypto-watch] ${position.coin} — trailing stop disparado`, body);
+        log.unshift({ ruleId: trailKey, message: body, time: new Date().toISOString() });
+      }
+    }
+  }
+
+  if (positionsChanged) {
+    await writeJSON('positions.json', positions);
   }
 
   await writeJSON('triggered.json', triggeredState);

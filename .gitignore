@@ -2,5 +2,6 @@ node_modules/
 .env
 data/*.json
 !data/positions.json
+!data/cycle-phase.json
 *.log
 .DS_Store

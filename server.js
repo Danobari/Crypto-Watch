@@ -6,6 +6,7 @@ import { getAccountBalances, getTickers24h } from './binance.js';
 import { readJSON, writeJSON } from './store.js';
 import { symbolFor } from './rules.js';
 import { evaluateLadder, nextPendingLevel, pctSold, nextActionText, suggestedOrder, changePctFromEntry } from './ladder.js';
+import { getCBBI, cbbiPhaseLabel } from './cycle.js';
 import crypto from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -148,6 +149,7 @@ app.get('/api/portfolio', async (req, res) => {
         proximaAccion: currentPrice !== null ? nextActionText(p, changePct) : 'Sin precio de referencia',
         nivelCruzadoPendiente: hit ? { pct: hit.level.pct, levelIndex: hit.levelIndex } : null,
         pendienteInfo: pending ? { pct: pending.pct, sellPct: pending.sellPct } : null,
+        trailingStop: p.trailingStop || null,
       };
     });
 
@@ -184,6 +186,49 @@ app.get('/api/portfolio/:coin/order/:levelIndex', async (req, res) => {
   }
 });
 
+// API: Preparar orden de salida por trailing stop (no ejecuta nada, solo calcula)
+app.get('/api/portfolio/:coin/trailing-order', async (req, res) => {
+  try {
+    const positions = await readJSON('positions.json', []);
+    const position = positions.find((p) => p.coin.toUpperCase() === req.params.coin.toUpperCase());
+    if (!position) return res.status(404).json({ error: 'Posición no encontrada' });
+    if (!position.trailingStop || !position.trailingStop.triggered) {
+      return res.status(400).json({ error: 'El trailing stop de esta posición todavía no se ha disparado' });
+    }
+
+    let balances = [];
+    if (process.env.BINANCE_API_KEY && process.env.BINANCE_API_SECRET) {
+      try { balances = await getAccountBalances(process.env.BINANCE_API_KEY, process.env.BINANCE_API_SECRET); } catch (e) {}
+    }
+    const holding = balances.find((b) => b.asset === position.coin.toUpperCase());
+    const holdingAmount = holding ? holding.free + holding.locked : 0;
+
+    const tickers = await getTickers24h([symbolFor(position.coin)]);
+    const ticker = tickers[symbolFor(position.coin)];
+    if (!ticker) return res.status(500).json({ error: 'No se pudo leer el precio actual' });
+
+    const sellPct = position.trailingSellPct || 100;
+    const order = suggestedOrder(position.coin, holdingAmount, sellPct, ticker.price);
+    res.json({ ...order, trailingStop: position.trailingStop, taxReserveSugerida: order.approxValueUSD * 0.3 });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// API: Reiniciar el trailing stop de una posición (ej. tras ejecutarlo, o si quieres re-armarlo)
+app.post('/api/positions/:coin/trailing-stop/reset', async (req, res) => {
+  try {
+    const positions = await readJSON('positions.json', []);
+    const idx = positions.findIndex((p) => p.coin.toUpperCase() === req.params.coin.toUpperCase());
+    if (idx === -1) return res.status(404).json({ error: 'Posición no encontrada' });
+    positions[idx].trailingStop = { armed: false, peakPrice: null, atr: null, multiplier: null, stopPrice: null, triggered: false };
+    await writeJSON('positions.json', positions);
+    res.json(positions[idx]);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // API: Editar una posición (precio de entrada, bloque, notas, niveles)
 app.put('/api/positions/:coin', async (req, res) => {
   try {
@@ -215,7 +260,7 @@ app.post('/api/positions/:coin/levels/:levelIndex/mark-sold', async (req, res) =
   }
 });
 
-// API: Ciclo de mercado — dominancia BTC + ratio ETH/BTC para la revisión táctica de los viernes
+// API: Ciclo de mercado — dominancia BTC, ratio ETH/BTC, score CBBI y tu fase manual
 app.get('/api/cycle', async (req, res) => {
   try {
     let btcDominance = null;
@@ -231,6 +276,13 @@ app.get('/api/cycle', async (req, res) => {
     const eth = tickers['ETHUSDT'];
     const ethBtcRatio = btc && eth ? eth.price / btc.price : null;
 
+    let cbbi = null;
+    try {
+      cbbi = await getCBBI();
+    } catch (e) {
+      console.error('No se pudo leer CBBI:', e.message);
+    }
+
     let signal = 'Sin datos suficientes.';
     if (btcDominance !== null && eth && btc) {
       if (eth.changePercent > btc.changePercent) {
@@ -240,14 +292,37 @@ app.get('/api/cycle', async (req, res) => {
       }
     }
 
+    const cyclePhase = await readJSON('cycle-phase.json', { phase: 'neutral', notes: '', updatedAt: null });
+
     res.json({
       btcDominance,
       ethBtcRatio,
       btcChange24h: btc ? btc.changePercent : null,
       ethChange24h: eth ? eth.changePercent : null,
       signal,
+      cbbi: cbbi ? { score: cbbi.score, asOf: cbbi.asOf, label: cbbiPhaseLabel(cbbi.score) } : null,
+      cyclePhase,
       altseasonIndexLink: 'https://www.blockchaincenter.net/altcoin-season-index/',
     });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// API: Actualizar la fase de ciclo manual (ej. la lectura de tu GPT de indicadores on-chain).
+// Esta fase ajusta qué tan ceñido es el trailing stop dinámico (ver cycle.js).
+app.put('/api/cycle-phase', async (req, res) => {
+  try {
+    const valid = ['acumulacion', 'alcista_temprano', 'neutral', 'euforia', 'distribucion', 'bajista'];
+    const phase = valid.includes(req.body.phase) ? req.body.phase : 'neutral';
+    const payload = {
+      phase,
+      notes: req.body.notes || '',
+      source: req.body.source || 'manual',
+      updatedAt: new Date().toISOString(),
+    };
+    await writeJSON('cycle-phase.json', payload);
+    res.json(payload);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

@@ -68,3 +68,57 @@ export function nextActionText(position, changePct) {
   const falta = (level.pct - changePct).toFixed(1);
   return `Esperar — faltan ${falta} pts para nivel +${level.pct}%`;
 }
+
+// --- Trailing stop dinámico (ATR) ---
+//
+// Se arma cuando el precio cruza el último nivel de la escalera (el que
+// tiene sellPct 0 — la zona de "no vender automático, evaluar trailing
+// stop"). A partir de ahí, cada tick actualiza el máximo (peak) visto y
+// calcula el precio de stop = peak - ATR * multiplicador. El multiplicador
+// depende de la fase de ciclo (más ceñido en euforia, más holgado en
+// acumulación) — ver cycle.js.
+//
+// No vende nada por su cuenta: solo calcula y avisa una vez cuando el
+// precio actual cae por debajo del stop.
+
+export function topLevel(position) {
+  return position.levels[position.levels.length - 1];
+}
+
+// Decide si ya toca armar/actualizar el trailing stop: el precio debe haber
+// cruzado el pct del último nivel.
+export function shouldTrack(position, changePct) {
+  if (changePct === null) return false;
+  return changePct >= topLevel(position).pct;
+}
+
+// Actualiza (o inicializa) el estado de trailing stop de una posición.
+// Devuelve el nuevo objeto trailingStop y si se disparó en este tick.
+export function updateTrailingStop(position, currentPrice, atr, multiplier) {
+  const existing = position.trailingStop || { armed: false, peakPrice: null, triggered: false };
+
+  if (existing.triggered) {
+    // Ya se avisó una vez; no seguir recalculando hasta que se reinicie.
+    return { trailingStop: existing, justTriggered: false };
+  }
+
+  const peakPrice = existing.armed ? Math.max(existing.peakPrice, currentPrice) : currentPrice;
+  const stopPrice = atr !== null && atr !== undefined ? peakPrice - atr * multiplier : null;
+  const hit = stopPrice !== null && currentPrice <= stopPrice;
+
+  const trailingStop = {
+    armed: true,
+    peakPrice,
+    atr,
+    multiplier,
+    stopPrice,
+    triggered: hit,
+    updatedAt: new Date().toISOString(),
+  };
+
+  return { trailingStop, justTriggered: hit };
+}
+
+export function resetTrailingStop(position) {
+  return { armed: false, peakPrice: null, atr: null, multiplier: null, stopPrice: null, triggered: false };
+}

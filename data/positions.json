@@ -22,7 +22,15 @@
         "sold": false,
         "action": "No vender automático — evaluar trailing stop dinámico (ATR)"
       }
-    ]
+    ],
+    "trailingStop": {
+      "armed": false,
+      "peakPrice": null,
+      "atr": null,
+      "multiplier": null,
+      "stopPrice": null,
+      "triggered": false
+    }
   },
   {
     "coin": "ETH",
