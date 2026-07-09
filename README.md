@@ -8,15 +8,31 @@ Corre solo, en segundo plano, aunque no tengas nada abierto en la
 computadora ni el navegador. Esa es la diferencia frente al panel de chat:
 aquí sí puede avisarte a las 3am si algo se dispara.
 
+## Almacenamiento: Supabase (ya no son archivos locales)
+
+Todo lo que antes vivía en `data/*.json` (posiciones, reglas, fase de
+ciclo, historial de alertas, qué ya se avisó) ahora vive en tablas de
+Supabase — ver `supabase/schema.sql`. Esto era necesario para poder
+desplegar el servidor en la nube: en un hosting serverless no hay disco
+persistente entre invocaciones. Los `data/*.json` que ves en el repo
+quedan como respaldo histórico de cuando corría todo local; el código ya
+no los lee ni los escribe (`db.js` reemplazó a `store.js`).
+
+Necesitas `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` en tu `.env`
+(Supabase → tu proyecto → Settings → API — la service_role key nunca va
+en el frontend ni en git). Las tablas ya tienen RLS activado sin
+políticas públicas: solo el backend, con la service_role key, puede leer
+o escribir.
+
 ## Qué SÍ hace
 
 - Lee tus saldos reales de Binance (solo lectura).
 - Revisa el precio y el cambio 24h de los activos en tus reglas.
-- Evalúa tus reglas (ya definidas por ti en `data/rules.json`).
+- Evalúa tus reglas (ya definidas por ti, editables desde el dashboard).
 - Cuando una regla se cumple, calcula la orden sugerida según el tamaño que
   tú configuraste (% de tu posición, monto fijo en USD, o cantidad fija).
 - Te manda un correo con el aviso y la orden sugerida.
-- Guarda un registro local en `data/alerts-log.json`.
+- Guarda el historial de alertas en Supabase.
 
 ## Qué NO hace
 

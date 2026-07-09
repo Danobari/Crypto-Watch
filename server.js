@@ -3,7 +3,17 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import axios from 'axios';
 import { getAccountBalances, getTickers24h } from './binance.js';
-import { readJSON, writeJSON } from './store.js';
+import {
+  getRules,
+  addRule,
+  deleteRule,
+  getPositions,
+  getPosition,
+  savePosition,
+  getAlertsLog,
+  getCyclePhase,
+  saveCyclePhase,
+} from './db.js';
 import { symbolFor } from './rules.js';
 import { evaluateLadder, nextPendingLevel, pctSold, nextActionText, suggestedOrder, changePctFromEntry } from './ladder.js';
 import { getCBBI, cbbiPhaseLabel } from './cycle.js';
@@ -35,7 +45,7 @@ app.get('/api/balances', async (req, res) => {
 // API: Obtener registro de alertas
 app.get('/api/alerts', async (req, res) => {
   try {
-    const log = await readJSON('alerts-log.json', []);
+    const log = await getAlertsLog();
     res.json(log);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -45,7 +55,7 @@ app.get('/api/alerts', async (req, res) => {
 // API: Obtener reglas activas
 app.get('/api/rules', async (req, res) => {
   try {
-    const rules = await readJSON('rules.json', []);
+    const rules = await getRules();
     res.json(rules);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -55,7 +65,7 @@ app.get('/api/rules', async (req, res) => {
 // API: Obtener mercado actual (Tracker)
 app.get('/api/market', async (req, res) => {
   try {
-    const rules = await readJSON('rules.json', []);
+    const rules = await getRules();
     let balances = [];
     if (process.env.BINANCE_API_KEY && process.env.BINANCE_API_SECRET) {
       try { balances = await getAccountBalances(process.env.BINANCE_API_KEY, process.env.BINANCE_API_SECRET); } catch(e){}
@@ -65,7 +75,7 @@ app.get('/api/market', async (req, res) => {
     coins.delete('USDT');
     const symbols = Array.from(coins).map(c => `${c}USDT`);
     const tickers = await getTickers24h(symbols);
-    
+
     // Formatear la respuesta
     const marketData = Array.from(coins).map(coin => {
       const ticker = tickers[`${coin}USDT`];
@@ -75,7 +85,7 @@ app.get('/api/market', async (req, res) => {
         changePercent: ticker ? ticker.changePercent : null
       };
     }).filter(d => d.price !== null);
-    
+
     res.json(marketData);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -85,15 +95,13 @@ app.get('/api/market', async (req, res) => {
 // API: Añadir nueva regla
 app.post('/api/rules', async (req, res) => {
   try {
-    const rules = await readJSON('rules.json', []);
     const newRule = {
       id: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 9),
       active: true,
       ...req.body
     };
-    rules.push(newRule);
-    await writeJSON('rules.json', rules);
-    res.json(newRule);
+    const saved = await addRule(newRule);
+    res.json(saved);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -102,9 +110,7 @@ app.post('/api/rules', async (req, res) => {
 // API: Borrar regla
 app.delete('/api/rules/:id', async (req, res) => {
   try {
-    const rules = await readJSON('rules.json', []);
-    const filtered = rules.filter(r => r.id !== req.params.id);
-    await writeJSON('rules.json', filtered);
+    await deleteRule(req.params.id);
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -114,7 +120,7 @@ app.delete('/api/rules/:id', async (req, res) => {
 // API: Cartera — posiciones con P&L calculado en vivo (reemplaza al Tracker.xlsx manual)
 app.get('/api/portfolio', async (req, res) => {
   try {
-    const positions = await readJSON('positions.json', []);
+    const positions = await getPositions();
     let balances = [];
     if (process.env.BINANCE_API_KEY && process.env.BINANCE_API_SECRET) {
       try { balances = await getAccountBalances(process.env.BINANCE_API_KEY, process.env.BINANCE_API_SECRET); } catch (e) {}
@@ -162,8 +168,7 @@ app.get('/api/portfolio', async (req, res) => {
 // API: Preparar orden para un nivel específico (no ejecuta nada, solo calcula)
 app.get('/api/portfolio/:coin/order/:levelIndex', async (req, res) => {
   try {
-    const positions = await readJSON('positions.json', []);
-    const position = positions.find((p) => p.coin.toUpperCase() === req.params.coin.toUpperCase());
+    const position = await getPosition(req.params.coin);
     if (!position) return res.status(404).json({ error: 'Posición no encontrada' });
     const level = position.levels[Number(req.params.levelIndex)];
     if (!level) return res.status(404).json({ error: 'Nivel no encontrado' });
@@ -189,8 +194,7 @@ app.get('/api/portfolio/:coin/order/:levelIndex', async (req, res) => {
 // API: Preparar orden de salida por trailing stop (no ejecuta nada, solo calcula)
 app.get('/api/portfolio/:coin/trailing-order', async (req, res) => {
   try {
-    const positions = await readJSON('positions.json', []);
-    const position = positions.find((p) => p.coin.toUpperCase() === req.params.coin.toUpperCase());
+    const position = await getPosition(req.params.coin);
     if (!position) return res.status(404).json({ error: 'Posición no encontrada' });
     if (!position.trailingStop || !position.trailingStop.triggered) {
       return res.status(400).json({ error: 'El trailing stop de esta posición todavía no se ha disparado' });
@@ -218,12 +222,11 @@ app.get('/api/portfolio/:coin/trailing-order', async (req, res) => {
 // API: Reiniciar el trailing stop de una posición (ej. tras ejecutarlo, o si quieres re-armarlo)
 app.post('/api/positions/:coin/trailing-stop/reset', async (req, res) => {
   try {
-    const positions = await readJSON('positions.json', []);
-    const idx = positions.findIndex((p) => p.coin.toUpperCase() === req.params.coin.toUpperCase());
-    if (idx === -1) return res.status(404).json({ error: 'Posición no encontrada' });
-    positions[idx].trailingStop = { armed: false, peakPrice: null, atr: null, multiplier: null, stopPrice: null, triggered: false };
-    await writeJSON('positions.json', positions);
-    res.json(positions[idx]);
+    const position = await getPosition(req.params.coin);
+    if (!position) return res.status(404).json({ error: 'Posición no encontrada' });
+    position.trailingStop = { armed: false, peakPrice: null, atr: null, multiplier: null, stopPrice: null, triggered: false };
+    await savePosition(position);
+    res.json(position);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -232,12 +235,11 @@ app.post('/api/positions/:coin/trailing-stop/reset', async (req, res) => {
 // API: Editar una posición (precio de entrada, bloque, notas, niveles)
 app.put('/api/positions/:coin', async (req, res) => {
   try {
-    const positions = await readJSON('positions.json', []);
-    const idx = positions.findIndex((p) => p.coin.toUpperCase() === req.params.coin.toUpperCase());
-    if (idx === -1) return res.status(404).json({ error: 'Posición no encontrada' });
-    positions[idx] = { ...positions[idx], ...req.body, coin: positions[idx].coin };
-    await writeJSON('positions.json', positions);
-    res.json(positions[idx]);
+    const position = await getPosition(req.params.coin);
+    if (!position) return res.status(404).json({ error: 'Posición no encontrada' });
+    const updated = { ...position, ...req.body, coin: position.coin };
+    await savePosition(updated);
+    res.json(updated);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -246,15 +248,14 @@ app.put('/api/positions/:coin', async (req, res) => {
 // API: Marcar un nivel como vendido (o deshacer) — tú confirmas que ya ejecutaste la orden
 app.post('/api/positions/:coin/levels/:levelIndex/mark-sold', async (req, res) => {
   try {
-    const positions = await readJSON('positions.json', []);
-    const idx = positions.findIndex((p) => p.coin.toUpperCase() === req.params.coin.toUpperCase());
-    if (idx === -1) return res.status(404).json({ error: 'Posición no encontrada' });
-    const level = positions[idx].levels[Number(req.params.levelIndex)];
+    const position = await getPosition(req.params.coin);
+    if (!position) return res.status(404).json({ error: 'Posición no encontrada' });
+    const level = position.levels[Number(req.params.levelIndex)];
     if (!level) return res.status(404).json({ error: 'Nivel no encontrado' });
     level.sold = req.body.sold !== undefined ? !!req.body.sold : true;
     level.soldAt = level.sold ? new Date().toISOString() : null;
-    await writeJSON('positions.json', positions);
-    res.json(positions[idx]);
+    await savePosition(position);
+    res.json(position);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -292,7 +293,7 @@ app.get('/api/cycle', async (req, res) => {
       }
     }
 
-    const cyclePhase = await readJSON('cycle-phase.json', { phase: 'neutral', notes: '', updatedAt: null });
+    const cyclePhase = await getCyclePhase();
 
     res.json({
       btcDominance,
@@ -315,13 +316,7 @@ app.put('/api/cycle-phase', async (req, res) => {
   try {
     const valid = ['acumulacion', 'alcista_temprano', 'neutral', 'euforia', 'distribucion', 'bajista'];
     const phase = valid.includes(req.body.phase) ? req.body.phase : 'neutral';
-    const payload = {
-      phase,
-      notes: req.body.notes || '',
-      source: req.body.source || 'manual',
-      updatedAt: new Date().toISOString(),
-    };
-    await writeJSON('cycle-phase.json', payload);
+    const payload = await saveCyclePhase({ phase, notes: req.body.notes, source: req.body.source });
     res.json(payload);
   } catch (e) {
     res.status(500).json({ error: e.message });

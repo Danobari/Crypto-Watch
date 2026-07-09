@@ -1,7 +1,16 @@
 import 'dotenv/config';
 import cron from 'node-cron';
 import { getAccountBalances, getTickers24h } from './binance.js';
-import { readJSON, writeJSON } from './store.js';
+import {
+  getRules,
+  getPositions,
+  savePositions,
+  getCyclePhase,
+  getTriggeredState,
+  saveTriggeredState,
+  getAlertsLog,
+  appendAlert,
+} from './db.js';
 import { sendAlertEmail } from './notify.js';
 import { evaluateRule, symbolFor } from './rules.js';
 import {
@@ -21,12 +30,12 @@ const EXCEL_SYNC_CRON = process.env.EXCEL_SYNC_CRON || '0 8 * * *'; // una vez a
 const INTERVAL = Number(process.env.CHECK_INTERVAL_MINUTES || 5);
 
 async function tick() {
-  const rules = await readJSON('rules.json', []);
+  const rules = await getRules();
   const activeRules = rules.filter((r) => r.active !== false);
-  const positions = await readJSON('positions.json', []);
+  const positions = await getPositions();
 
   if (activeRules.length === 0 && positions.length === 0) {
-    console.log('Sin reglas ni posiciones — copia config/rules.example.json a data/rules.json, o define data/positions.json.');
+    console.log('Sin reglas ni posiciones — agrega una regla o una posición desde el dashboard.');
     return;
   }
 
@@ -42,8 +51,7 @@ async function tick() {
   const coins = [...new Set([...activeRules.map((r) => r.coin), ...positions.map((p) => p.coin)])];
   const tickers = await getTickers24h(coins.map(symbolFor));
 
-  const triggeredState = await readJSON('triggered.json', {});
-  const log = await readJSON('alerts-log.json', []);
+  const triggeredState = await getTriggeredState();
 
   for (const rule of activeRules) {
     const ticker = tickers[symbolFor(rule.coin)];
@@ -67,13 +75,13 @@ async function tick() {
       }
       console.log(body);
       await sendAlertEmail(`[crypto-watch] ${rule.coin} — regla disparada`, body);
-      log.unshift({ ruleId: rule.id, message: body, time: new Date().toISOString() });
+      await appendAlert({ ruleId: rule.id, message: body });
     } else if (!hitResult && wasTriggered) {
       triggeredState[rule.id] = false;
     }
   }
 
-  const cyclePhase = await readJSON('cycle-phase.json', { phase: 'neutral' });
+  const cyclePhase = await getCyclePhase();
   let positionsChanged = false;
 
   // Escalera de toma de beneficios por posición (data/positions.json).
@@ -106,7 +114,7 @@ async function tick() {
         }
         console.log(body);
         await sendAlertEmail(`[crypto-watch] ${position.coin} — nivel +${hit.level.pct}% alcanzado`, body);
-        log.unshift({ ruleId: stateKey, message: body, time: new Date().toISOString() });
+        await appendAlert({ ruleId: stateKey, message: body });
       }
     }
 
@@ -149,17 +157,16 @@ async function tick() {
           `\nTú decides si la colocas y a qué precio — esto no ejecuta nada en Binance.`;
         console.log(body);
         await sendAlertEmail(`[crypto-watch] ${position.coin} — trailing stop disparado`, body);
-        log.unshift({ ruleId: trailKey, message: body, time: new Date().toISOString() });
+        await appendAlert({ ruleId: trailKey, message: body });
       }
     }
   }
 
   if (positionsChanged) {
-    await writeJSON('positions.json', positions);
+    await savePositions(positions);
   }
 
-  await writeJSON('triggered.json', triggeredState);
-  await writeJSON('alerts-log.json', log.slice(0, 200));
+  await saveTriggeredState(triggeredState);
 }
 
 // Mantiene Tracker.xlsx al día (precio actual, niveles, próxima acción,
@@ -168,7 +175,7 @@ async function tick() {
 // tienes el archivo abierto — si falla porque el archivo está abierto o
 // bloqueado, solo lo registra y lo vuelve a intentar en el siguiente ciclo.
 async function syncExcel() {
-  const positions = await readJSON('positions.json', []);
+  const positions = await getPositions();
   if (positions.length === 0) return;
 
   let balances = [];
