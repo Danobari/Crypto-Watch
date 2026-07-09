@@ -1,0 +1,18 @@
+[
+  {
+    "id": "btc-drop-20",
+    "coin": "BTC",
+    "type": "change_down",
+    "value": 20,
+    "active": true,
+    "order": { "side": "buy", "sizeType": "usd", "sizeValue": 500 }
+  },
+  {
+    "id": "eth-target-4000",
+    "coin": "ETH",
+    "type": "above",
+    "value": 4000,
+    "active": true,
+    "order": { "side": "sell", "sizeType": "pct_holding", "sizeValue": 25 }
+  }
+]

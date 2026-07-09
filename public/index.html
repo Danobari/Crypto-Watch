@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Crypto Tracker Pro</title>
+  <meta name="description" content="Dashboard avanzado para visualizar posiciones y gestionar reglas de trading en Binance.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-container">
+    <aside class="sidebar glass-panel">
+      <div class="logo">
+        <div class="logo-icon"></div>
+        <h1>CryptoTracker</h1>
+      </div>
+      <nav>
+        <a href="#overview" class="nav-item active" id="nav-overview">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+          Saldos
+        </a>
+        <a href="#market" class="nav-item" id="nav-market">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+          Mercado (Tracker)
+        </a>
+        <a href="#rules" class="nav-item" id="nav-rules">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+          Reglas Activas
+        </a>
+        <a href="#alerts" class="nav-item" id="nav-alerts">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+          Historial Alertas
+        </a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="status-indicator">
+          <div class="pulse"></div>
+          <span>API Conectada</span>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header>
+        <h2 id="section-title">Saldos</h2>
+        <div class="header-actions">
+          <button id="add-rule-btn" class="btn btn-primary glass-panel" style="display: none;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            Crear Regla
+          </button>
+          <button id="refresh-btn" class="btn glass-panel">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+            Refrescar
+          </button>
+        </div>
+      </header>
+
+      <!-- Section: Overview / Balances -->
+      <section id="overview-section" class="content-section active">
+        <div class="cards-grid" id="balances-grid">
+          <div class="loading-state">Cargando saldos...</div>
+        </div>
+      </section>
+
+      <!-- Section: Market Tracker -->
+      <section id="market-section" class="content-section">
+        <div class="cards-grid" id="market-grid">
+          <div class="loading-state">Cargando mercado en tiempo real...</div>
+        </div>
+      </section>
+
+      <!-- Section: Rules -->
+      <section id="rules-section" class="content-section">
+        <div class="glass-panel table-container">
+          <table id="rules-table">
+            <thead>
+              <tr>
+                <th>Moneda</th>
+                <th>Condición</th>
+                <th>Acción</th>
+                <th>Estado</th>
+                <th>Eliminar</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Rules will be loaded here -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Section: Alerts -->
+      <section id="alerts-section" class="content-section">
+        <div class="alerts-list" id="alerts-list">
+          <!-- Alerts will be loaded here -->
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Modal para Nueva Regla -->
+  <div class="modal-overlay" id="rule-modal">
+    <div class="modal glass-panel">
+      <div class="modal-header">
+        <h3>Programar Nueva Regla</h3>
+        <button class="close-btn" id="close-modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="rule-form">
+          <div class="form-group">
+            <label>Moneda (ej. BTC)</label>
+            <input type="text" id="rule-coin" required placeholder="BTC" style="text-transform: uppercase;">
+          </div>
+          
+          <div class="form-row">
+            <div class="form-group">
+              <label>Condición</label>
+              <select id="rule-type" required>
+                <option value="change_down">Baja X% en 24h</option>
+                <option value="change_up">Sube X% en 24h</option>
+                <option value="above">Precio sube de $</option>
+                <option value="below">Precio baja de $</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Valor (X o $)</label>
+              <input type="number" id="rule-value" required step="0.01" placeholder="Ej. 20">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label>Acción</label>
+              <select id="rule-side" required>
+                <option value="buy">COMPRAR</option>
+                <option value="sell">VENDER</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Tamaño (Tipo)</label>
+              <select id="rule-sizeType" required>
+                <option value="usd">USD (Fijo)</option>
+                <option value="qty">Cantidad (Fija)</option>
+                <option value="pct_holding">% de mi balance</option>
+              </select>
+            </div>
+          </div>
+          
+          <div class="form-group">
+            <label>Cantidad (Ej. 500)</label>
+            <input type="number" id="rule-sizeValue" required step="0.01" placeholder="500">
+          </div>
+
+          <div class="modal-footer">
+            <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center;">Guardar Regla</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
