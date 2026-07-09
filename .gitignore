@@ -5,3 +5,5 @@ data/*.json
 !data/cycle-phase.json
 *.log
 .DS_Store
+.netlify/
+__rt-test-old.mjs
