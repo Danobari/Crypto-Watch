@@ -12,9 +12,11 @@ import {
   updateTrailingStop,
 } from './ladder.js';
 import { getATR, atrMultiplierForPhase } from './cycle.js';
+import { syncTrackerExcel } from './excel-sync.js';
 import { startServer } from './server.js';
 
 const ATR_REFRESH_MS = 12 * 60 * 60 * 1000; // recalcular ATR cada 12h como máximo
+const EXCEL_SYNC_CRON = process.env.EXCEL_SYNC_CRON || '0 8 * * *'; // una vez al día por defecto
 
 const INTERVAL = Number(process.env.CHECK_INTERVAL_MINUTES || 5);
 
@@ -160,9 +162,44 @@ async function tick() {
   await writeJSON('alerts-log.json', log.slice(0, 200));
 }
 
+// Mantiene Tracker.xlsx al día (precio actual, niveles, próxima acción,
+// bloque) sin que tengas que tocarlo a mano. Corre por separado del tick
+// de alertas (una vez al día por defecto) para no pelear con Excel si
+// tienes el archivo abierto — si falla porque el archivo está abierto o
+// bloqueado, solo lo registra y lo vuelve a intentar en el siguiente ciclo.
+async function syncExcel() {
+  const positions = await readJSON('positions.json', []);
+  if (positions.length === 0) return;
+
+  let balances = [];
+  try {
+    if (process.env.BINANCE_API_KEY && process.env.BINANCE_API_SECRET) {
+      balances = await getAccountBalances(process.env.BINANCE_API_KEY, process.env.BINANCE_API_SECRET);
+    }
+  } catch (e) {
+    console.error('No se pudieron leer los saldos de Binance para Tracker.xlsx:', e.message);
+  }
+
+  const tickers = await getTickers24h(positions.map((p) => symbolFor(p.coin)));
+
+  try {
+    await syncTrackerExcel(positions, tickers, balances, symbolFor);
+    console.log(`Tracker.xlsx sincronizado (${new Date().toLocaleString()}).`);
+  } catch (e) {
+    console.error(
+      'No se pudo escribir Tracker.xlsx (¿está abierto en Excel? ciérralo y se sincroniza en el próximo ciclo):',
+      e.message
+    );
+  }
+}
+
 console.log(`crypto-watch iniciado — revisando cada ${INTERVAL} minuto(s).`);
 tick();
 cron.schedule(`*/${INTERVAL} * * * *`, tick);
+
+console.log(`Sincronización de Tracker.xlsx programada: "${EXCEL_SYNC_CRON}".`);
+syncExcel();
+cron.schedule(EXCEL_SYNC_CRON, syncExcel);
 
 // Levantar servidor del Dashboard
 startServer();

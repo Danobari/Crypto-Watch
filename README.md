@@ -95,6 +95,42 @@ tú mismo. **Nunca coloca la orden — solo prepara los números.** Cuando la
 ejecutes, marca el nivel como "vendido" en el dashboard para que no te
 vuelva a avisar de lo mismo.
 
+## Tracker.xlsx se autorellena solo
+
+`Tracker.xlsx` ya no se llena a mano. Cada vez que corre (una vez al día
+por defecto, configurable con `EXCEL_SYNC_CRON` en `.env`), `excel-sync.js`
+sincroniza el archivo desde `data/positions.json` y los precios en vivo de
+Binance:
+
+- **Cantidad, Precio_Entrada, Precio_Actual** — se escriben directo.
+- **%_Cambio y Valor_Actual** — se dejan como las fórmulas de Excel que ya
+  tenía (`=(D-C)/C`, `=B*D`), así que se recalculan solas apenas abras el
+  archivo.
+- **Nivel_1 / Nivel_2 / Nivel_3, %_Ya_Vendido, Próxima_Acción, Bloque** —
+  se recalculan cada vez con la misma lógica que la pestaña Cartera del
+  dashboard (antes esta hoja asumía +40/+80/+120% igual para todo; ahora
+  cada bloque tiene lo suyo, por eso los encabezados pasaron a llamarse
+  "Nivel_1/2/3" en vez de un % fijo).
+- Si agregas una posición nueva en `data/positions.json` que todavía no
+  existe en el Excel, se agrega una fila nueva sola.
+
+Dos cosas a tener en cuenta:
+
+1. **Si tienes el archivo abierto en Excel cuando toca sincronizar, esa
+   sincronización va a fallar** (el archivo queda bloqueado) — no pasa
+   nada, se reintenta en el siguiente ciclo. Ciérralo antes de la hora
+   programada si quieres asegurarte de ver datos frescos.
+2. **De paso se corrige un bug que ya traía el archivo**: el precio de
+   entrada de BTC estaba cargado en una escala de "miles" (`103.34` en vez
+   de `103340`), lo que hacía que `Valor_Actual` para BTC estuviera mal por
+   un factor de 1000. La sincronización lo deja en `103340` (el mismo
+   número que ya usa `data/positions.json` y que Manuel Coin calculó
+   originalmente), así que ese número va a "saltar" la primera vez que
+   corra — es la corrección, no un error nuevo.
+
+La columna "Notas del Mercado" (M) y la hoja "Reglas del sistema" son
+tuyas — el script nunca las toca.
+
 ## Trailing Stop Dinámico (ATR)
 
 Cuando el precio de una posición cruza el último nivel de su escalera (el
