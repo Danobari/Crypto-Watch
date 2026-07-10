@@ -112,7 +112,13 @@ async function tick() {
   }
 
   const coins = [...new Set([...activeRules.map((r) => r.coin), ...positions.map((p) => p.coin)])];
-  const tickers = await getTickers24h(coins.map(symbolFor));
+  let tickers = {};
+  try {
+    tickers = await getTickers24h(coins.map(symbolFor));
+  } catch (e) {
+    console.error('No se pudieron leer los tickers de Binance:', e.message);
+    return; // sin precios no hay nada que evaluar en este tick — se reintenta en el próximo
+  }
 
   const triggeredState = await getTriggeredState();
 
@@ -236,9 +242,25 @@ async function tick() {
   await maybeSyncSheets({ positions, rules, balances, tickers });
 }
 
+// Nunca dejar que un error dentro de tick() tumbe todo el proceso (eso hacía
+// que Render marcara el deploy como fallido y siguiera sirviendo la versión
+// vieja — justo lo que pasó con el ban 418: tick() lanzaba un error sin
+// capturar y crasheaba el servicio en cada arranque).
+async function safeTick() {
+  try {
+    await tick();
+  } catch (e) {
+    console.error('tick() falló (no se detiene el servicio):', e.message);
+  }
+}
+
+process.on('unhandledRejection', (e) => {
+  console.error('unhandledRejection (ignorado, el servicio sigue corriendo):', e?.message || e);
+});
+
 console.log(`crypto-watch iniciado — revisando cada ${INTERVAL} minuto(s).`);
-tick();
-cron.schedule(`*/${INTERVAL} * * * *`, tick);
+safeTick();
+cron.schedule(`*/${INTERVAL} * * * *`, safeTick);
 
 // Levantar servidor del Dashboard
 startServer();
