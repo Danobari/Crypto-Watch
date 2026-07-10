@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import axios from 'axios';
 import cron from 'node-cron';
 import { getAccountBalances, getTickers24h } from './binance.js';
 import {
@@ -19,15 +20,77 @@ import {
   changePctFromEntry,
   shouldTrack,
   updateTrailingStop,
+  nextPendingLevel,
+  pctSold,
+  nextActionText,
 } from './ladder.js';
-import { getATR, atrMultiplierForPhase } from './cycle.js';
-import { syncTrackerExcel } from './excel-sync.js';
+import { getATR, atrMultiplierForPhase, getCBBI, cbbiPhaseLabel } from './cycle.js';
+import { syncTrackerSheets } from './sheets-sync.js';
 import { startServer } from './server.js';
 
 const ATR_REFRESH_MS = 12 * 60 * 60 * 1000; // recalcular ATR cada 12h como máximo
-const EXCEL_SYNC_CRON = process.env.EXCEL_SYNC_CRON || '0 8 * * *'; // una vez al día por defecto
 
 const INTERVAL = Number(process.env.CHECK_INTERVAL_MINUTES || 5);
+
+// Sincroniza el Google Sheet una vez al día — se dispara desde dentro de
+// tick() reusando los balances/tickers que YA se pidieron ahí mismo, en vez
+// de volver a llamar a Binance por separado (eso era lo que duplicaba el
+// peso de requests y ayudaba a gatillar el ban 418 en cada arranque).
+let lastSheetsSyncDate = null;
+
+async function maybeSyncSheets({ positions, rules, balances, tickers }) {
+  if (!process.env.GOOGLE_SHEET_ID) return; // no configurado, se ignora en silencio
+  const today = new Date().toISOString().slice(0, 10);
+  if (lastSheetsSyncDate === today) return;
+
+  try {
+    let btcDominance = null;
+    try {
+      const globalRes = await axios.get('https://api.coingecko.com/api/v3/global', { timeout: 8000 });
+      btcDominance = globalRes.data.data.market_cap_percentage.btc;
+    } catch (e) {
+      console.error('No se pudo leer dominancia BTC de CoinGecko:', e.message);
+    }
+
+    const btc = tickers['BTCUSDT'];
+    const eth = tickers['ETHUSDT'];
+    const ethBtcRatio = btc && eth ? eth.price / btc.price : null;
+
+    let cbbi = null;
+    try {
+      const raw = await getCBBI();
+      if (raw) cbbi = { score: raw.score, asOf: raw.asOf, label: cbbiPhaseLabel(raw.score) };
+    } catch (e) {
+      console.error('No se pudo leer CBBI:', e.message);
+    }
+
+    let signal = 'Sin datos suficientes.';
+    if (btcDominance !== null && eth && btc) {
+      signal =
+        eth.changePercent > btc.changePercent
+          ? 'ETH está ganando fuerza relativa frente a BTC en las últimas 24h — vigila si el ratio ETH/BTC sigue subiendo.'
+          : 'BTC sigue liderando en las últimas 24h — todavía no hay señal clara de rotación hacia altcoins.';
+    }
+
+    const cyclePhase = await getCyclePhase();
+    const alerts = await getAlertsLog(200);
+
+    await syncTrackerSheets({
+      positions,
+      tickers,
+      balances,
+      symbolFor,
+      helpers: { changePctFromEntry, nextPendingLevel, pctSold, nextActionText },
+      cycleData: { cyclePhase, btcDominance, ethBtcRatio, btcChange24h: btc?.changePercent, ethChange24h: eth?.changePercent, cbbi, signal },
+      rules,
+      alerts,
+    });
+    lastSheetsSyncDate = today;
+    console.log(`Google Sheet sincronizado (${new Date().toLocaleString()}).`);
+  } catch (e) {
+    console.error('No se pudo sincronizar el Google Sheet:', e.message);
+  }
+}
 
 async function tick() {
   const rules = await getRules();
@@ -167,46 +230,15 @@ async function tick() {
   }
 
   await saveTriggeredState(triggeredState);
-}
 
-// Mantiene Tracker.xlsx al día (precio actual, niveles, próxima acción,
-// bloque) sin que tengas que tocarlo a mano. Corre por separado del tick
-// de alertas (una vez al día por defecto) para no pelear con Excel si
-// tienes el archivo abierto — si falla porque el archivo está abierto o
-// bloqueado, solo lo registra y lo vuelve a intentar en el siguiente ciclo.
-async function syncExcel() {
-  const positions = await getPositions();
-  if (positions.length === 0) return;
-
-  let balances = [];
-  try {
-    if (process.env.BINANCE_API_KEY && process.env.BINANCE_API_SECRET) {
-      balances = await getAccountBalances(process.env.BINANCE_API_KEY, process.env.BINANCE_API_SECRET);
-    }
-  } catch (e) {
-    console.error('No se pudieron leer los saldos de Binance para Tracker.xlsx:', e.message);
-  }
-
-  const tickers = await getTickers24h(positions.map((p) => symbolFor(p.coin)));
-
-  try {
-    await syncTrackerExcel(positions, tickers, balances, symbolFor);
-    console.log(`Tracker.xlsx sincronizado (${new Date().toLocaleString()}).`);
-  } catch (e) {
-    console.error(
-      'No se pudo escribir Tracker.xlsx (¿está abierto en Excel? ciérralo y se sincroniza en el próximo ciclo):',
-      e.message
-    );
-  }
+  // Google Sheet: una vez al día, reusando los balances/tickers que ya se
+  // pidieron arriba (sin llamadas extra a Binance).
+  await maybeSyncSheets({ positions, rules, balances, tickers });
 }
 
 console.log(`crypto-watch iniciado — revisando cada ${INTERVAL} minuto(s).`);
 tick();
 cron.schedule(`*/${INTERVAL} * * * *`, tick);
-
-console.log(`Sincronización de Tracker.xlsx programada: "${EXCEL_SYNC_CRON}".`);
-syncExcel();
-cron.schedule(EXCEL_SYNC_CRON, syncExcel);
 
 // Levantar servidor del Dashboard
 startServer();
