@@ -306,18 +306,58 @@ document.addEventListener('DOMContentLoaded', () => {
         const isUp = m.changePercent >= 0;
         const trendClass = isUp ? 'trend-up' : 'trend-down';
         const trendIcon = isUp ? '↑' : '↓';
+        const removeBtn = m.inWatchlist
+          ? `<button type="button" class="watchlist-remove-btn" data-coin="${m.coin}" title="Quitar de Mercado" style="background:none;border:none;color:var(--danger-color,#ff6b6b);cursor:pointer;font-size:1.1rem;line-height:1;">×</button>`
+          : '';
         return `
           <div class="crypto-card glass-panel ${trendClass}">
             <div class="card-header">
               <span class="crypto-symbol">${m.coin}</span>
-              <span class="trend-badge">${trendIcon} ${Math.abs(m.changePercent).toFixed(2)}%</span>
+              <span style="display:flex; align-items:center; gap:0.5rem;">
+                <span class="trend-badge">${trendIcon} ${Math.abs(m.changePercent).toFixed(2)}%</span>
+                ${removeBtn}
+              </span>
             </div>
             <div class="crypto-amount">$${parseFloat(m.price).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 6})}</div>
             <div class="crypto-value">Precio 24h</div>
           </div>
         `;
       }).join('');
+
+      grid.querySelectorAll('.watchlist-remove-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const coin = btn.getAttribute('data-coin');
+          if (!confirm(`¿Quitar ${coin} de Mercado?`)) return;
+          try {
+            await fetch(`/api/watchlist/${coin}`, { method: 'DELETE' });
+            loadMarket();
+          } catch (e) { alert('No se pudo quitar la moneda.'); }
+        });
+      });
     } catch (e) { grid.innerHTML = `<div class="loading-state" style="color: var(--danger-color)">Error de conexión</div>`; }
+  }
+
+  const watchlistAddForm = document.getElementById('watchlist-add-form');
+  if (watchlistAddForm) {
+    watchlistAddForm.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const input = document.getElementById('watchlist-coin-input');
+      const errorEl = document.getElementById('watchlist-add-error');
+      const coin = input.value.trim().toUpperCase();
+      errorEl.textContent = '';
+      if (!coin) return;
+      try {
+        const res = await fetch('/api/watchlist', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ coin }),
+        });
+        const data = await res.json();
+        if (data.error) { errorEl.textContent = data.error; return; }
+        input.value = '';
+        loadMarket();
+      } catch (e) { errorEl.textContent = 'Error de conexión.'; }
+    });
   }
 
   async function loadCycle() {

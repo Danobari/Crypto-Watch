@@ -13,6 +13,9 @@ import {
   getAlertsLog,
   getCyclePhase,
   saveCyclePhase,
+  getWatchlist,
+  addToWatchlist,
+  removeFromWatchlist,
 } from './db.js';
 import { symbolFor } from './rules.js';
 import { evaluateLadder, nextPendingLevel, pctSold, nextActionText, suggestedOrder, changePctFromEntry } from './ladder.js';
@@ -66,15 +69,17 @@ app.get('/api/rules', async (req, res) => {
 app.get('/api/market', async (req, res) => {
   try {
     const rules = await getRules();
+    const watchlist = await getWatchlist();
     let balances = [];
     if (process.env.BINANCE_API_KEY && process.env.BINANCE_API_SECRET) {
       try { balances = await getAccountBalances(process.env.BINANCE_API_KEY, process.env.BINANCE_API_SECRET); } catch(e){}
     }
-    const coins = new Set([...rules.map(r => r.coin), ...balances.map(b => b.asset)]);
+    const coins = new Set([...rules.map(r => r.coin), ...balances.map(b => b.asset), ...watchlist]);
     // Quitar USDT si está en balances
     coins.delete('USDT');
     const symbols = Array.from(coins).map(c => `${c}USDT`);
     const tickers = await getTickers24h(symbols);
+    const watchlistSet = new Set(watchlist);
 
     // Formatear la respuesta
     const marketData = Array.from(coins).map(coin => {
@@ -82,11 +87,43 @@ app.get('/api/market', async (req, res) => {
       return {
         coin,
         price: ticker ? ticker.price : null,
-        changePercent: ticker ? ticker.changePercent : null
+        changePercent: ticker ? ticker.changePercent : null,
+        inWatchlist: watchlistSet.has(coin),
       };
     }).filter(d => d.price !== null);
 
     res.json(marketData);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// API: Watchlist — monedas que quieres ver en Mercado aunque no las tengas
+// en tu balance ni tengan una regla de alerta.
+app.get('/api/watchlist', async (req, res) => {
+  try {
+    const watchlist = await getWatchlist();
+    res.json(watchlist);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/watchlist', async (req, res) => {
+  try {
+    const coin = (req.body.coin || '').trim().toUpperCase();
+    if (!coin) return res.status(400).json({ error: 'Falta la moneda (ej. BTC)' });
+    await addToWatchlist(coin);
+    res.json({ success: true, coin });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/watchlist/:coin', async (req, res) => {
+  try {
+    await removeFromWatchlist(req.params.coin);
+    res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

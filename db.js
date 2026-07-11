@@ -206,6 +206,28 @@ export async function saveBinanceBanUntil(bannedUntilMs) {
   if (error) throw new Error(`Supabase (binance_ban_state): ${error.message}`);
 }
 
+// --- Watchlist (pestaña Mercado) ---
+//
+// Monedas que quieres ver en "Mercado (Tracker)" aunque no las tengas en tu
+// balance de Binance ni tengan una regla de alerta creada — ej. BTC/ETH
+// para referencia general, o cualquier moneda que quieras vigilar.
+
+export async function getWatchlist() {
+  const { data, error } = await getClient().from('watchlist').select('coin').order('created_at');
+  if (error) throw new Error(`Supabase (watchlist): ${error.message}`);
+  return (data || []).map((row) => row.coin);
+}
+
+export async function addToWatchlist(coin) {
+  const { error } = await getClient().from('watchlist').upsert({ coin: coin.toUpperCase() });
+  if (error) throw new Error(`Supabase (watchlist): ${error.message}`);
+}
+
+export async function removeFromWatchlist(coin) {
+  const { error } = await getClient().from('watchlist').delete().eq('coin', coin.toUpperCase());
+  if (error) throw new Error(`Supabase (watchlist): ${error.message}`);
+}
+
 // --- Snapshot de Binance (poblado por scripts/binance-local-poller.mjs) ---
 //
 // Confirmado con scripts/test-binance-local.mjs: la IP compartida de Render

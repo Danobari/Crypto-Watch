@@ -13,7 +13,7 @@
 
 import 'dotenv/config';
 import { fetchAccountBalances, fetchTickers24h } from '../binance-live.js';
-import { getRules, getPositions, saveBinanceBalancesSnapshot, saveBinanceTickersSnapshot } from '../db.js';
+import { getRules, getPositions, getWatchlist, saveBinanceBalancesSnapshot, saveBinanceTickersSnapshot } from '../db.js';
 import { symbolFor } from '../rules.js';
 
 function log(msg) {
@@ -41,10 +41,11 @@ async function poll() {
   }
 
   try {
-    const [rules, positions] = await Promise.all([getRules(), getPositions()]);
+    const [rules, positions, watchlist] = await Promise.all([getRules(), getPositions(), getWatchlist()]);
     const coins = new Set(['BTC', 'ETH']); // siempre, para la pestaña Ciclo de Mercado
     rules.forEach((r) => coins.add(r.coin));
     positions.forEach((p) => coins.add(p.coin));
+    watchlist.forEach((c) => coins.add(c));
     balances.forEach((b) => {
       // USDT no tiene par contra sí mismo. Los que empiezan con "LD" son
       // saldos de productos de ahorro/Earn de Binance (ej. LDUSDC = "Locked
