@@ -36,21 +36,43 @@ export async function fetchAccountBalances(apiKey, apiSecret) {
     .filter((b) => b.free + b.locked > 0);
 }
 
-// Precio y cambio 24h de varios símbolos a la vez (endpoint público).
+function tickerFromRow(t) {
+  return {
+    symbol: t.symbol,
+    price: parseFloat(t.lastPrice),
+    changePercent: parseFloat(t.priceChangePercent),
+  };
+}
+
+// Precio y cambio 24h de varios símbolos a la vez (endpoint público). Si
+// algún símbolo no existe en Binance (ej. un saldo de un producto que no
+// se tradea, o un typo en una regla), el request agrupado falla ENTERO —
+// por eso, si eso pasa, se reintenta uno por uno y se descartan solo los
+// que de verdad fallan, en vez de perder todos los precios de ese ciclo.
 export async function fetchTickers24h(symbols) {
   const unique = Array.from(new Set(symbols));
   if (unique.length === 0) return {};
-  const res = await axios.get(`${BASE_URL}/api/v3/ticker/24hr`, {
-    params: { symbols: JSON.stringify(unique.sort()) },
-  });
-  logRateLimitHeaders(res.headers, `tickers(${unique.length})`);
+
+  try {
+    const res = await axios.get(`${BASE_URL}/api/v3/ticker/24hr`, {
+      params: { symbols: JSON.stringify(unique.sort()) },
+    });
+    logRateLimitHeaders(res.headers, `tickers(${unique.length})`);
+    const results = {};
+    for (const t of res.data) results[t.symbol] = tickerFromRow(t);
+    return results;
+  } catch (e) {
+    console.log(`   ⚠️  Falló el pedido agrupado (${e.response?.data?.msg || e.message}), reintentando uno por uno...`);
+  }
+
   const results = {};
-  for (const t of res.data) {
-    results[t.symbol] = {
-      symbol: t.symbol,
-      price: parseFloat(t.lastPrice),
-      changePercent: parseFloat(t.priceChangePercent),
-    };
+  for (const symbol of unique) {
+    try {
+      const res = await axios.get(`${BASE_URL}/api/v3/ticker/24hr`, { params: { symbol } });
+      results[symbol] = tickerFromRow(res.data);
+    } catch (e) {
+      console.log(`   ⚠️  Se descarta ${symbol}: ${e.response?.data?.msg || e.message}`);
+    }
   }
   return results;
 }

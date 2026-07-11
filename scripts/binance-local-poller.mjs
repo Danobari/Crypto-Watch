@@ -45,7 +45,14 @@ async function poll() {
     const coins = new Set(['BTC', 'ETH']); // siempre, para la pestaña Ciclo de Mercado
     rules.forEach((r) => coins.add(r.coin));
     positions.forEach((p) => coins.add(p.coin));
-    balances.forEach((b) => { if (b.asset !== 'USDT') coins.add(b.asset); });
+    balances.forEach((b) => {
+      // USDT no tiene par contra sí mismo. Los que empiezan con "LD" son
+      // saldos de productos de ahorro/Earn de Binance (ej. LDUSDC = "Locked
+      // Deposit" de USDC) — no son monedas tradeables, no tienen par en
+      // Binance y tumbarían el pedido agrupado de precios si se incluyen.
+      if (b.asset === 'USDT' || b.asset.startsWith('LD')) return;
+      coins.add(b.asset);
+    });
 
     const symbols = Array.from(coins).map(symbolFor);
     const tickers = await fetchTickers24h(symbols);
