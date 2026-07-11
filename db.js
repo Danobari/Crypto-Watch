@@ -182,6 +182,30 @@ export async function saveTriggeredState(state) {
   if (error) throw new Error(`Supabase (triggered_state): ${error.message}`);
 }
 
+// --- Estado del ban temporal de Binance (persistido) ---
+//
+// Antes vivía solo en una variable en memoria dentro de binance.js. El
+// problema: si Render reinicia el proceso (crash, redeploy, o el propio
+// ciclo del plan gratis) mientras el ban seguía activo en Binance, esa
+// variable se resetea a 0 y la app cree que ya puede volver a llamar a
+// Binance — manda un request real contra un ban que sigue activo, y
+// Binance, al ver que insistes durante el ban, lo extiende (así fue como
+// un ban de ~35 min pasó a marcar ~124 min tras un reinicio). Guardarlo en
+// Supabase hace que el freno de emergencia sobreviva a un reinicio.
+
+export async function getBinanceBanUntil() {
+  const { data, error } = await getClient().from('binance_ban_state').select('banned_until_ms').eq('id', 1).maybeSingle();
+  if (error) throw new Error(`Supabase (binance_ban_state): ${error.message}`);
+  return data ? Number(data.banned_until_ms) : 0;
+}
+
+export async function saveBinanceBanUntil(bannedUntilMs) {
+  const { error } = await getClient()
+    .from('binance_ban_state')
+    .upsert({ id: 1, banned_until_ms: bannedUntilMs, updated_at: new Date().toISOString() });
+  if (error) throw new Error(`Supabase (binance_ban_state): ${error.message}`);
+}
+
 // --- Skills subidas desde el dashboard (sección Skills + IA) ---
 
 export async function getSkills() {

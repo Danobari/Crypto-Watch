@@ -1,5 +1,6 @@
 import axios from 'axios';
 import crypto from 'crypto';
+import { getBinanceBanUntil, saveBinanceBanUntil } from './db.js';
 
 const BASE_URL = 'https://api.binance.com';
 
@@ -14,13 +15,36 @@ function sign(queryString, secret) {
 // código reintenta de inmediato en cada ruta/tick, lo que insiste contra un
 // ban activo — y potencialmente lo renueva o lo alarga. Mientras el freno
 // esté activo, ni siquiera se manda el request: se falla localmente y rápido.
+//
+// El estado se persiste en Supabase (tabla binance_ban_state) además de en
+// memoria: si el proceso viviera solo en memoria y Render lo reinicia
+// (crash, redeploy, o el propio ciclo del plan gratis) mientras el ban
+// sigue activo en Binance, la variable en memoria se resetearía a 0 y la
+// app volvería a mandar un request real contra un ban que Binance todavía
+// tiene activo — y Binance, al detectar la insistencia, lo extiende (así
+// fue como un ban de ~35 min pasó a marcar ~124 min tras un reinicio).
 let bannedUntil = 0;
+let banStateLoadPromise = null;
 
-function isBanned() {
+function loadPersistedBanState() {
+  if (!banStateLoadPromise) {
+    banStateLoadPromise = getBinanceBanUntil()
+      .then((persisted) => {
+        if (persisted > bannedUntil) bannedUntil = persisted;
+      })
+      .catch((e) => {
+        console.error('No se pudo leer el ban de Binance persistido en Supabase:', e.message);
+      });
+  }
+  return banStateLoadPromise;
+}
+
+async function isBanned() {
+  await loadPersistedBanState();
   return Date.now() < bannedUntil;
 }
 
-function registerBan(e) {
+async function registerBan(e) {
   const status = e.response?.status;
   if (status !== 418 && status !== 429) return;
 
@@ -35,6 +59,12 @@ function registerBan(e) {
   bannedUntil = Math.max(bannedUntil, until);
   const mins = Math.ceil((bannedUntil - Date.now()) / 60000);
   console.error(`Binance ${status === 418 ? 'baneó' : 'limitó'} esta IP — pausando llamadas ~${mins} min (hasta ${new Date(bannedUntil).toISOString()}).`);
+
+  try {
+    await saveBinanceBanUntil(bannedUntil);
+  } catch (persistErr) {
+    console.error('No se pudo persistir el ban de Binance en Supabase (queda solo en memoria):', persistErr.message);
+  }
 }
 
 function bannedError() {
@@ -53,7 +83,7 @@ let balancesCache = null; // { data, at }
 // Lee los saldos reales de tu cuenta. Requiere una API key con permiso de
 // Lectura únicamente — este endpoint solo lee, nunca escribe ni ejecuta nada.
 export async function getAccountBalances(apiKey, apiSecret) {
-  if (isBanned()) throw bannedError();
+  if (await isBanned()) throw bannedError();
   if (balancesCache && Date.now() - balancesCache.at < CACHE_TTL_MS) {
     return balancesCache.data;
   }
@@ -70,14 +100,14 @@ export async function getAccountBalances(apiKey, apiSecret) {
     balancesCache = { data, at: Date.now() };
     return data;
   } catch (e) {
-    registerBan(e);
+    await registerBan(e);
     throw e;
   }
 }
 
 // Precio y cambio 24h de un símbolo (endpoint público, no requiere API key).
 export async function getTicker24h(symbol) {
-  if (isBanned()) throw bannedError();
+  if (await isBanned()) throw bannedError();
   try {
     const res = await axios.get(`${BASE_URL}/api/v3/ticker/24hr`, { params: { symbol } });
     return {
@@ -86,7 +116,7 @@ export async function getTicker24h(symbol) {
       changePercent: parseFloat(res.data.priceChangePercent),
     };
   } catch (e) {
-    registerBan(e);
+    await registerBan(e);
     throw e;
   }
 }
@@ -107,7 +137,7 @@ export async function getTickers24h(symbols) {
     return cached.data;
   }
 
-  if (isBanned()) throw bannedError();
+  if (await isBanned()) throw bannedError();
 
   try {
     const res = await axios.get(`${BASE_URL}/api/v3/ticker/24hr`, {
@@ -123,20 +153,20 @@ export async function getTickers24h(symbols) {
     tickersCache.set(cacheKey, { data: results, at: Date.now() });
     return results;
   } catch (e) {
-    registerBan(e);
+    await registerBan(e);
     console.error('No se pudo leer tickers agrupados, se intenta uno por uno:', e.message);
   }
 
   // Fallback: si el request agrupado falla (ej. algún símbolo inválido, y no
   // por un ban ya registrado arriba), se intenta uno por uno para no perder
   // los que sí son válidos.
-  if (isBanned()) throw bannedError();
+  if (await isBanned()) throw bannedError();
   for (const symbol of unique) {
     try {
       results[symbol] = await getTicker24h(symbol);
     } catch (e) {
       console.error(`No se pudo leer ${symbol}:`, e.message);
-      if (isBanned()) break; // ya no sigas insistiendo si se acaba de banear
+      if (await isBanned()) break; // ya no sigas insistiendo si se acaba de banear
     }
   }
   tickersCache.set(cacheKey, { data: results, at: Date.now() });

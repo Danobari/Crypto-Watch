@@ -64,6 +64,19 @@ create table if not exists triggered_state (
   updated_at timestamptz not null default now()
 );
 
+-- Estado del ban temporal de Binance (freno de emergencia en binance.js).
+-- Se persiste aquí, no solo en memoria, para que sobreviva a un reinicio
+-- del proceso (crash, redeploy, ciclo del plan gratis de Render): sin esto,
+-- un reinicio en pleno ban hace que la app vuelva a llamar a Binance
+-- creyendo que ya no hay ban, y Binance extiende el castigo al detectar la
+-- insistencia.
+create table if not exists binance_ban_state (
+  id int primary key default 1,
+  banned_until_ms bigint not null default 0,
+  updated_at timestamptz not null default now(),
+  constraint single_row check (id = 1)
+);
+
 -- Skills subidas desde el dashboard (sección Skills + IA). El contenido en
 -- markdown se guarda tal cual; el dashboard se lo pasa al proveedor de IA
 -- elegido (Anthropic/OpenAI) como instrucciones para tareas puntuales.
