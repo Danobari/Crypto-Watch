@@ -72,6 +72,25 @@ function bannedError() {
   return new Error(`Binance temporalmente bloqueado (ban activo, ~${mins} min restantes) — no se reintenta hasta que expire.`);
 }
 
+// --- Visibilidad real del peso consumido ---
+// Binance manda en CADA respuesta (éxito o error) el peso realmente
+// consumido por esta IP en el último minuto (X-MBX-USED-WEIGHT-1M). Antes
+// solo sabíamos que nos habían baneado, sin saber si de verdad estábamos
+// cerca del límite (1200/min) o si el ban viene de otro lado (ej. IP
+// compartida con otros clientes de Render en la misma región). Registrar
+// este número en cada request da evidencia real en vez de suposiciones.
+function logRateLimitHeaders(headers, label) {
+  if (!headers) return;
+  const usedWeight = headers['x-mbx-used-weight-1m'];
+  const retryAfter = headers['retry-after'];
+  if (usedWeight !== undefined) {
+    console.log(
+      `[Binance peso] ${label} — peso usado en el último minuto: ${usedWeight}/1200` +
+        (retryAfter ? `, Retry-After: ${retryAfter}s` : '')
+    );
+  }
+}
+
 // --- Caché por símbolo + single-flight ---
 // Antes el cache de tickers se guardaba por la combinación EXACTA de
 // símbolos pedidos ("BTCUSDT,ETHUSDT" vs "ALGOUSDT,BTCUSDT,ETHUSDT,..."),
@@ -110,12 +129,14 @@ export async function getAccountBalances(apiKey, apiSecret) {
     const url = `${BASE_URL}/api/v3/account?${query}&signature=${signature}`;
     try {
       const res = await axios.get(url, { headers: { 'X-MBX-APIKEY': apiKey } });
+      logRateLimitHeaders(res.headers, 'getAccountBalances');
       const data = res.data.balances
         .map((b) => ({ asset: b.asset, free: parseFloat(b.free), locked: parseFloat(b.locked) }))
         .filter((b) => b.free + b.locked > 0);
       balancesCache = { data, at: Date.now() };
       return data;
     } catch (e) {
+      logRateLimitHeaders(e.response?.headers, 'getAccountBalances (error)');
       await registerBan(e);
       throw e;
     }
@@ -136,6 +157,7 @@ export async function getTicker24h(symbol) {
   if (await isBanned()) throw bannedError();
   try {
     const res = await axios.get(`${BASE_URL}/api/v3/ticker/24hr`, { params: { symbol } });
+    logRateLimitHeaders(res.headers, `getTicker24h(${symbol})`);
     const data = {
       symbol: res.data.symbol,
       price: parseFloat(res.data.lastPrice),
@@ -144,6 +166,7 @@ export async function getTicker24h(symbol) {
     tickerCache.set(symbol, { data, at: Date.now() });
     return data;
   } catch (e) {
+    logRateLimitHeaders(e.response?.headers, `getTicker24h(${symbol}) (error)`);
     await registerBan(e);
     throw e;
   }
@@ -189,6 +212,7 @@ export async function getTickers24h(symbols) {
       const res = await axios.get(`${BASE_URL}/api/v3/ticker/24hr`, {
         params: { symbols: JSON.stringify(stale.sort()) },
       });
+      logRateLimitHeaders(res.headers, `getTickers24h(${stale.length} símbolos)`);
       for (const t of res.data) {
         const data = {
           symbol: t.symbol,
@@ -198,6 +222,7 @@ export async function getTickers24h(symbols) {
         tickerCache.set(t.symbol, { data, at: Date.now() });
       }
     } catch (e) {
+      logRateLimitHeaders(e.response?.headers, 'getTickers24h agrupado (error)');
       await registerBan(e);
       console.error('No se pudo leer tickers agrupados, se intenta uno por uno:', e.message);
 
