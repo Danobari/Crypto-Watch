@@ -71,15 +71,25 @@ npm install
 npm start
 ```
 
-## 4. Dejarlo corriendo de forma permanente
+## 4. Desplegado en Render (24/7, no depende de tu computadora)
 
-`npm start` corre en primer plano. Para que siga corriendo aunque cierres
-la terminal, algunas opciones simples:
+`crypto-watch` corre como Web Service gratuito en Render
+(`https://crypto-watch-eq0d.onrender.com`), región Frankfurt — importante
+porque Binance bloquea (HTTP 451) los requests que salen desde IPs de la
+región US por defecto de otros hostings serverless (Netlify Functions, por
+ejemplo, de donde se migró este proyecto).
 
-- **pm2**: `npm install -g pm2` y luego `pm2 start src/index.js --name crypto-watch`
-- **macOS (launchd)**: crear un `.plist` que corra `npm start` al iniciar sesión
-- Un VPS pequeño (Railway, Fly.io, una Raspberry Pi en casa) si prefieres que
-  no dependa de que tu computadora esté encendida
+- El repo está conectado como "Public Git Repository" (sin OAuth de
+  GitHub), lo que significa que los deploys **no son automáticos**: cada
+  vez que hagas push a `main`, entra al dashboard de Render → "Manual
+  Deploy" → "Deploy latest commit".
+- El plan gratis duerme el servicio tras 15 minutos sin tráfico (el
+  siguiente request tarda 50s+ en despertar). Para evitarlo hay un monitor
+  gratuito en UptimeRobot que hace ping cada 5 minutos.
+- `binance.js` incluye un freno de emergencia (circuit breaker): si
+  Binance devuelve un ban temporal (418/429), deja de insistir por un rato
+  en vez de reintentar sin parar — eso es lo que evita que un ban se
+  renueve solo en cada arranque del servicio.
 
 ## Cartera (data/positions.json)
 
@@ -111,41 +121,24 @@ tú mismo. **Nunca coloca la orden — solo prepara los números.** Cuando la
 ejecutes, marca el nivel como "vendido" en el dashboard para que no te
 vuelva a avisar de lo mismo.
 
-## Tracker.xlsx se autorellena solo
+## El Tracker se autorellena solo (Google Sheets)
 
-`Tracker.xlsx` ya no se llena a mano. Cada vez que corre (una vez al día
-por defecto, configurable con `EXCEL_SYNC_CRON` en `.env`), `excel-sync.js`
-sincroniza el archivo desde `data/positions.json` y los precios en vivo de
-Binance:
+El Tracker manual ya no es un archivo Excel local — es el Google Sheet
+**"Crypto Watch Tracker"**, sincronizado por `sheets-sync.js` una vez al
+día (se dispara desde dentro de `tick()`, reusando los balances/tickers
+que ese mismo ciclo ya pidió a Binance, sin llamadas extra). Este cambio
+fue necesario al mover el hosting a la nube: ahí no hay disco persistente
+para editar un `.xlsx` local.
 
-- **Cantidad, Precio_Entrada, Precio_Actual** — se escriben directo.
-- **%_Cambio y Valor_Actual** — se dejan como las fórmulas de Excel que ya
-  tenía (`=(D-C)/C`, `=B*D`), así que se recalculan solas apenas abras el
-  archivo.
-- **Nivel_1 / Nivel_2 / Nivel_3, %_Ya_Vendido, Próxima_Acción, Bloque** —
-  se recalculan cada vez con la misma lógica que la pestaña Cartera del
-  dashboard (antes esta hoja asumía +40/+80/+120% igual para todo; ahora
-  cada bloque tiene lo suyo, por eso los encabezados pasaron a llamarse
-  "Nivel_1/2/3" en vez de un % fijo).
-- Si agregas una posición nueva en `data/positions.json` que todavía no
-  existe en el Excel, se agrega una fila nueva sola.
+El Sheet tiene 4 pestañas: **Cartera** (espejo completo de cada posición,
+con P&L, niveles y trailing stop), **Ciclo de Mercado** (histórico, una
+fila por sincronización), **Reglas** (espejo de tus reglas activas) y
+**Historial de Alertas**.
 
-Dos cosas a tener en cuenta:
-
-1. **Si tienes el archivo abierto en Excel cuando toca sincronizar, esa
-   sincronización va a fallar** (el archivo queda bloqueado) — no pasa
-   nada, se reintenta en el siguiente ciclo. Ciérralo antes de la hora
-   programada si quieres asegurarte de ver datos frescos.
-2. **De paso se corrige un bug que ya traía el archivo**: el precio de
-   entrada de BTC estaba cargado en una escala de "miles" (`103.34` en vez
-   de `103340`), lo que hacía que `Valor_Actual` para BTC estuviera mal por
-   un factor de 1000. La sincronización lo deja en `103340` (el mismo
-   número que ya usa `data/positions.json` y que Manuel Coin calculó
-   originalmente), así que ese número va a "saltar" la primera vez que
-   corra — es la corrección, no un error nuevo.
-
-La columna "Notas del Mercado" (M) y la hoja "Reglas del sistema" son
-tuyas — el script nunca las toca.
+`Tracker.xlsx` (el archivo en esta carpeta) quedó como respaldo histórico
+de cuando todo corría en local — ya no se actualiza solo. Si prefieres
+borrarlo para no tener dos "trackers" dando vueltas, es tu decisión: el
+dashboard, el Sheet y la Cartera en vivo no dependen de él para nada.
 
 ## Trailing Stop Dinámico (ATR)
 
