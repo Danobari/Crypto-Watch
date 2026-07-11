@@ -107,7 +107,8 @@
         <div class="glass-panel" style="padding: 1rem 1.5rem; margin-bottom: 1.5rem;">
           <form id="watchlist-add-form" style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
             <label for="watchlist-coin-input" style="font-size: 0.9rem; opacity: 0.85;">Agregar moneda a Mercado:</label>
-            <input type="text" id="watchlist-coin-input" placeholder="Ej. SOL, ADA..." maxlength="10" style="max-width: 160px;" />
+            <input type="text" id="watchlist-coin-input" list="coin-datalist" placeholder="Ej. SOL o Solana..." maxlength="40" autocomplete="off" style="max-width: 240px;" />
+            <datalist id="coin-datalist"></datalist>
             <button type="submit" class="btn btn-primary">Agregar</button>
             <span id="watchlist-add-error" style="color: #ff6b6b; font-size: 0.85rem;"></span>
           </form>

@@ -1,4 +1,74 @@
+// Lista curada de monedas conocidas (símbolo + nombre) para el autocompletado
+// del campo "Agregar moneda a Mercado". No es exhaustiva — cualquier ticker
+// de Binance que no esté aquí se puede seguir escribiendo directo (ej. un
+// símbolo poco común), esta lista solo ayuda a encontrar el ticker cuando
+// solo recuerdas el nombre.
+const COIN_DIRECTORY = [
+  ['BTC', 'Bitcoin'], ['ETH', 'Ethereum'], ['BNB', 'BNB'], ['XRP', 'Ripple'],
+  ['SOL', 'Solana'], ['ADA', 'Cardano'], ['DOGE', 'Dogecoin'], ['TRX', 'Tron'],
+  ['TON', 'Toncoin'], ['AVAX', 'Avalanche'], ['DOT', 'Polkadot'], ['MATIC', 'Polygon'],
+  ['POL', 'Polygon'], ['LINK', 'Chainlink'], ['LTC', 'Litecoin'], ['BCH', 'Bitcoin Cash'],
+  ['ATOM', 'Cosmos'], ['UNI', 'Uniswap'], ['NEAR', 'Near Protocol'], ['APT', 'Aptos'],
+  ['ARB', 'Arbitrum'], ['OP', 'Optimism'], ['INJ', 'Injective'], ['SUI', 'Sui'],
+  ['ICP', 'Internet Computer'], ['FIL', 'Filecoin'], ['ETC', 'Ethereum Classic'],
+  ['XLM', 'Stellar'], ['ALGO', 'Algorand'], ['VET', 'VeChain'], ['HBAR', 'Hedera'],
+  ['RENDER', 'Render'], ['FTM', 'Fantom'], ['S', 'Sonic'], ['AAVE', 'Aave'],
+  ['MKR', 'Maker'], ['SAND', 'The Sandbox'], ['MANA', 'Decentraland'],
+  ['AXS', 'Axie Infinity'], ['GALA', 'Gala'], ['CRV', 'Curve DAO'], ['LDO', 'Lido DAO'],
+  ['RUNE', 'THORChain'], ['KAS', 'Kaspa'], ['TIA', 'Celestia'], ['SEI', 'Sei'],
+  ['STX', 'Stacks'], ['IMX', 'Immutable'], ['GRT', 'The Graph'], ['QNT', 'Quant'],
+  ['EGLD', 'MultiversX'], ['XTZ', 'Tezos'], ['THETA', 'Theta Network'], ['FLOW', 'Flow'],
+  ['CHZ', 'Chiliz'], ['EOS', 'EOS'], ['XMR', 'Monero'], ['ZEC', 'Zcash'], ['DASH', 'Dash'],
+  ['WIF', 'dogwifhat'], ['BONK', 'Bonk'], ['FLOKI', 'Floki'], ['JUP', 'Jupiter'],
+  ['PYTH', 'Pyth Network'], ['ENA', 'Ethena'], ['ONDO', 'Ondo'], ['W', 'Wormhole'],
+  ['JTO', 'Jito'], ['PENDLE', 'Pendle'], ['NOT', 'Notcoin'], ['ORDI', 'Ordi'],
+  ['BLUR', 'Blur'], ['GMX', 'GMX'], ['DYDX', 'dYdX'], ['1INCH', '1inch'],
+  ['COMP', 'Compound'], ['SNX', 'Synthetix'], ['YFI', 'Yearn Finance'], ['BAT', 'Basic Attention Token'],
+  ['ZRX', '0x Protocol'], ['ENJ', 'Enjin Coin'], ['CAKE', 'PancakeSwap'], ['WLD', 'Worldcoin'],
+  ['TAO', 'Bittensor'], ['PEPE', 'Pepe'], ['SHIB', 'Shiba Inu'], ['USDC', 'USD Coin'],
+  ['USDT', 'Tether'], ['DAI', 'Dai'], ['TWT', 'Trust Wallet Token'], ['CFX', 'Conflux'],
+  ['ROSE', 'Oasis Network'], ['KAVA', 'Kava'], ['ZIL', 'Zilliqa'], ['ANKR', 'Ankr'],
+  ['CELO', 'Celo'], ['MINA', 'Mina Protocol'], ['KSM', 'Kusama'], ['WAVES', 'Waves'],
+  ['NEO', 'Neo'], ['IOTA', 'IOTA'], ['XEC', 'eCash'], ['GMT', 'STEPN'], ['APE', 'ApeCoin'],
+  ['LRC', 'Loopring'], ['SUSHI', 'SushiSwap'], ['BAL', 'Balancer'], ['REN', 'Ren'],
+  ['SKL', 'Skale'], ['OCEAN', 'Ocean Protocol'], ['RSR', 'Reserve Rights'], ['CVC', 'Civic'],
+  ['STORJ', 'Storj'], ['ICX', 'ICON'], ['ONT', 'Ontology'], ['QTUM', 'Qtum'],
+  ['ZEN', 'Horizen'], ['SC', 'Siacoin'], ['DGB', 'DigiByte'], ['RVN', 'Ravencoin'],
+  ['HOT', 'Holo'], ['IOST', 'IOST'], ['ONE', 'Harmony'], ['CKB', 'Nervos Network'],
+  ['ASTR', 'Astar'], ['GLMR', 'Moonbeam'], ['MOVR', 'Moonriver'], ['ACH', 'Alchemy Pay'],
+  ['API3', 'API3'], ['BAND', 'Band Protocol'], ['C98', 'Coin98'], ['CTSI', 'Cartesi'],
+  ['DENT', 'Dent'], ['DUSK', 'Dusk'], ['FET', 'Fetch.ai'], ['FLM', 'Flamingo'],
+  ['FXS', 'Frax Share'], ['GTC', 'Gitcoin'], ['HIGH', 'Highstreet'], ['ID', 'SPACE ID'],
+  ['JASMY', 'JasmyCoin'], ['KLAY', 'Klaytn'], ['LEVER', 'LeverFi'], ['LPT', 'Livepeer'],
+  ['MASK', 'Mask Network'], ['NKN', 'NKN'], ['OGN', 'Origin Protocol'], ['OSMO', 'Osmosis'],
+  ['PEOPLE', 'ConstitutionDAO'], ['POLYX', 'Polymesh'], ['RAY', 'Raydium'], ['REEF', 'Reef'],
+  ['SXP', 'Solar'], ['TLM', 'Alien Worlds'], ['TRB', 'Tellor'], ['TRU', 'TrueFi'],
+  ['UMA', 'UMA'], ['WOO', 'WOO Network'], ['XVS', 'Venus'], ['YGG', 'Yield Guild Games'],
+  ['ZK', 'ZKsync'], ['STRK', 'Starknet'], ['MANTA', 'Manta Network'], ['ALT', 'AltLayer'],
+  ['DYM', 'Dymension'], ['PIXEL', 'Pixels'], ['PORTAL', 'Portal'], ['AEVO', 'Aevo'],
+  ['ETHFI', 'Ether.fi'], ['REZ', 'Renzo'], ['BB', 'BounceBit'], ['NOTAI', 'Notcoin AI'],
+];
+
+function findCoinBySymbolOrName(rawInput) {
+  const q = rawInput.trim();
+  if (!q) return null;
+  const qUpper = q.toUpperCase();
+  const bySymbol = COIN_DIRECTORY.find(([symbol]) => symbol === qUpper);
+  if (bySymbol) return bySymbol[0];
+  const qLower = q.toLowerCase();
+  const byName = COIN_DIRECTORY.find(([, name]) => name.toLowerCase() === qLower);
+  if (byName) return byName[0];
+  return qUpper; // no coincide con la lista conocida — se usa tal cual como ticker
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+  const coinDatalist = document.getElementById('coin-datalist');
+  if (coinDatalist) {
+    coinDatalist.innerHTML = COIN_DIRECTORY
+      .map(([symbol, name]) => `<option value="${symbol}">${symbol} — ${name}</option>`)
+      .join('');
+  }
+
   // Navigation & UI Elements
   const navItems = document.querySelectorAll('.nav-item');
   const sections = document.querySelectorAll('.content-section');
@@ -343,7 +413,7 @@ document.addEventListener('DOMContentLoaded', () => {
       ev.preventDefault();
       const input = document.getElementById('watchlist-coin-input');
       const errorEl = document.getElementById('watchlist-add-error');
-      const coin = input.value.trim().toUpperCase();
+      const coin = findCoinBySymbolOrName(input.value);
       errorEl.textContent = '';
       if (!coin) return;
       try {
