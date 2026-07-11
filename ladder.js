@@ -36,6 +36,24 @@ export function evaluateLadder(position, currentPrice) {
   return null;
 }
 
+// "Ganancia no tomada": cuánto valía la posición en su pico registrado desde
+// la entrada, comparado con su valor actual. peakPriceSinceEntry se guarda
+// en la posición (ver index.js tick()) y arranca desde hoy — no reconstruye
+// picos pasados que no se guardaron antes de activar esta función. Se usa
+// tanto en /api/portfolio (dashboard) como en el sync del Google Sheet, para
+// que ambos muestren el mismo número.
+export function opportunityCost(position, currentPrice, holdingAmount) {
+  const peakPriceSinceEntry = position.peakPriceSinceEntry ?? position.entryPrice;
+  if (currentPrice === null || currentPrice === undefined || peakPriceSinceEntry <= currentPrice) {
+    return { peakPriceSinceEntry, gananciaNoTomadaUSD: 0, gananciaNoTomadaPct: 0 };
+  }
+  return {
+    peakPriceSinceEntry,
+    gananciaNoTomadaUSD: holdingAmount * (peakPriceSinceEntry - currentPrice),
+    gananciaNoTomadaPct: ((peakPriceSinceEntry - currentPrice) / peakPriceSinceEntry) * 100,
+  };
+}
+
 // Calcula la orden sugerida para vender una fracción (sellPct) de la
 // posición actual. holdingAmount = saldo real leído de Binance.
 export function suggestedOrder(coin, holdingAmount, sellPct, currentPrice) {
@@ -55,18 +73,36 @@ export function pctSold(position) {
   return position.levels.filter((l) => l.sold).reduce((sum, l) => sum + (l.sellPct || 0), 0);
 }
 
-// Texto de "Próxima Acción" para mostrar en el dashboard.
+// Precio objetivo en dólares para un nivel de la escalera — pura
+// aritmética (precio de entrada × el % del nivel), no un pronóstico de
+// mercado. Es lo que le muestra al usuario "vende cuando llegue a $X" en
+// vez de obligarlo a calcular el % mentalmente.
+export function targetPriceForLevel(entryPrice, level) {
+  if (!entryPrice || !level) return null;
+  return entryPrice * (1 + level.pct / 100);
+}
+
+function formatTargetPrice(price) {
+  if (price === null || price === undefined) return '';
+  const decimals = price < 1 ? 6 : price < 100 ? 4 : 2;
+  return `$${price.toLocaleString('en-US', { maximumFractionDigits: decimals })}`;
+}
+
+// Texto de "Próxima Acción" para mostrar en el dashboard y en el Google
+// Sheet — incluye el precio objetivo en dólares del próximo nivel, para no
+// tener que calcularlo aparte.
 export function nextActionText(position, changePct) {
   const level = nextPendingLevel(position);
   if (!level) return 'Todos los niveles gestionados — vigilar con trailing stop.';
   if (changePct === null) return 'Sin precio de referencia.';
+  const objetivo = formatTargetPrice(targetPriceForLevel(position.entryPrice, level));
   if (changePct >= level.pct) {
     return level.sellPct > 0
-      ? `Vender ~${level.sellPct}% (nivel +${level.pct}%)`
-      : level.action || `Nivel +${level.pct}% alcanzado — revisar contexto.`;
+      ? `Vender ~${level.sellPct}% (nivel +${level.pct}%, objetivo ${objetivo})`
+      : level.action || `Nivel +${level.pct}% alcanzado (objetivo ${objetivo}) — revisar contexto.`;
   }
   const falta = (level.pct - changePct).toFixed(1);
-  return `Esperar — faltan ${falta} pts para nivel +${level.pct}%`;
+  return `Esperar — faltan ${falta} pts para nivel +${level.pct}% (objetivo ${objetivo})`;
 }
 
 // --- Trailing stop dinámico (ATR) ---

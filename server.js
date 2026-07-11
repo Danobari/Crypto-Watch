@@ -18,7 +18,7 @@ import {
   removeFromWatchlist,
 } from './db.js';
 import { symbolFor } from './rules.js';
-import { evaluateLadder, nextPendingLevel, pctSold, nextActionText, suggestedOrder, changePctFromEntry } from './ladder.js';
+import { evaluateLadder, nextPendingLevel, pctSold, nextActionText, suggestedOrder, changePctFromEntry, opportunityCost } from './ladder.js';
 import { getCBBI, cbbiPhaseLabel } from './cycle.js';
 import crypto from 'crypto';
 
@@ -338,6 +338,7 @@ app.get('/api/portfolio', async (req, res) => {
       const valorActual = currentPrice !== null ? holdingAmount * currentPrice : null;
       const pending = nextPendingLevel(p);
       const hit = currentPrice !== null ? evaluateLadder(p, currentPrice) : null;
+      const { peakPriceSinceEntry, gananciaNoTomadaUSD, gananciaNoTomadaPct } = opportunityCost(p, currentPrice, holdingAmount);
 
       return {
         coin: p.coin,
@@ -348,6 +349,9 @@ app.get('/api/portfolio', async (req, res) => {
         changePct,
         holdingAmount,
         valorActual,
+        peakPriceSinceEntry,
+        gananciaNoTomadaUSD,
+        gananciaNoTomadaPct,
         levels: p.levels.map((l) => ({
           ...l,
           precioObjetivo: p.entryPrice * (1 + l.pct / 100),

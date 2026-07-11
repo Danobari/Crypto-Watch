@@ -87,7 +87,7 @@ function fmt(n, digits = 2) {
 // --- Cartera ---
 // positions: salida de getPositions() (db.js). tickers/balances: de binance.js.
 export function buildCarteraRows(positions, tickers, balances, symbolFor, helpers) {
-  const { changePctFromEntry, nextPendingLevel, pctSold, nextActionText } = helpers;
+  const { changePctFromEntry, nextPendingLevel, pctSold, nextActionText, opportunityCost } = helpers;
   return positions.map((p) => {
     const ticker = tickers[symbolFor(p.coin)];
     const holding = balances.find((b) => b.asset === p.coin.toUpperCase());
@@ -98,6 +98,7 @@ export function buildCarteraRows(positions, tickers, balances, symbolFor, helper
     const pending = nextPendingLevel(p);
     const levels = [0, 1, 2].map((i) => p.levels[i] || {});
     const ts = p.trailingStop || {};
+    const { peakPriceSinceEntry, gananciaNoTomadaUSD, gananciaNoTomadaPct } = opportunityCost(p, currentPrice, holdingAmount);
 
     return [
       p.coin,
@@ -125,6 +126,9 @@ export function buildCarteraRows(positions, tickers, balances, symbolFor, helper
       ts.triggered ? 'SI' : 'NO',
       p.notes || '',
       new Date().toISOString(),
+      fmt(peakPriceSinceEntry, 6),
+      fmt(gananciaNoTomadaUSD),
+      fmt(gananciaNoTomadaPct),
     ];
   });
 }

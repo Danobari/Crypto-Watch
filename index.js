@@ -23,6 +23,7 @@ import {
   nextPendingLevel,
   pctSold,
   nextActionText,
+  opportunityCost,
 } from './ladder.js';
 import { getATR, atrMultiplierForPhase, getCBBI, cbbiPhaseLabel } from './cycle.js';
 import { syncTrackerSheets } from './sheets-sync.js';
@@ -80,7 +81,7 @@ async function maybeSyncSheets({ positions, rules, balances, tickers }) {
       tickers,
       balances,
       symbolFor,
-      helpers: { changePctFromEntry, nextPendingLevel, pctSold, nextActionText },
+      helpers: { changePctFromEntry, nextPendingLevel, pctSold, nextActionText, opportunityCost },
       cycleData: { cyclePhase, btcDominance, ethBtcRatio, btcChange24h: btc?.changePercent, ethChange24h: eth?.changePercent, cbbi, signal },
       rules,
       alerts,
@@ -159,6 +160,20 @@ async function tick() {
     if (!ticker) continue;
     const holding = balances.find((b) => b.asset === position.coin.toUpperCase());
     const holdingAmount = holding ? holding.free : 0;
+
+    // Precio pico desde la entrada — para calcular "ganancia no tomada"
+    // (cuánto valía la posición en su mejor momento vs. ahora). Arranca
+    // desde el precio de entrada la primera vez que se ve la posición (no
+    // hay forma de reconstruir picos pasados que no se guardaron antes de
+    // hoy) y de ahí en adelante solo sube si el precio actual es mayor.
+    const previousPeak = position.peakPriceSinceEntry ?? position.entryPrice;
+    if (ticker.price > previousPeak) {
+      position.peakPriceSinceEntry = ticker.price;
+      positionsChanged = true;
+    } else if (position.peakPriceSinceEntry === null || position.peakPriceSinceEntry === undefined) {
+      position.peakPriceSinceEntry = previousPeak;
+      positionsChanged = true;
+    }
 
     const hit = evaluateLadder(position, ticker.price);
     const stateKey = `ladder:${position.coin}:${hit ? hit.level.pct : ''}`;

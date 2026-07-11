@@ -85,6 +85,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const orderModal = document.getElementById('order-modal');
   const closeOrderModalBtn = document.getElementById('close-order-modal');
 
+  // Modal Elements (Detalle consolidado de posición)
+  const positionDetailModal = document.getElementById('position-detail-modal');
+  const closePositionDetailModalBtn = document.getElementById('close-position-detail-modal');
+  let latestPortfolioData = [];
+
   // Switch Tabs
   function switchTab(tabId) {
     navItems.forEach(item => {
@@ -180,6 +185,79 @@ document.addEventListener('DOMContentLoaded', () => {
   orderModal.addEventListener('click', (e) => {
     if (e.target === orderModal) orderModal.classList.remove('active');
   });
+
+  closePositionDetailModalBtn.addEventListener('click', () => positionDetailModal.classList.remove('active'));
+  positionDetailModal.addEventListener('click', (e) => {
+    if (e.target === positionDetailModal) positionDetailModal.classList.remove('active');
+  });
+
+  function fmtPrice(price) {
+    if (price === null || price === undefined) return '—';
+    const decimals = price < 1 ? 6 : price < 100 ? 4 : 2;
+    return `$${price.toLocaleString('en-US', { maximumFractionDigits: decimals })}`;
+  }
+
+  window.openPositionDetail = function (coin) {
+    const p = latestPortfolioData.find((row) => row.coin === coin);
+    if (!p) return;
+    positionDetailModal.classList.add('active');
+    document.getElementById('position-detail-title').textContent = `${p.coin} — Detalle consolidado`;
+    const body = document.getElementById('position-detail-body');
+
+    const changeColor = p.changePct === null ? 'var(--text-secondary)' : (p.changePct >= 0 ? 'var(--success-color)' : 'var(--danger-color)');
+    const changeTxt = p.changePct === null ? '—' : `${p.changePct >= 0 ? '+' : ''}${p.changePct.toFixed(1)}%`;
+
+    const gananciaNoTomadaHtml = p.gananciaNoTomadaUSD > 0
+      ? `<div style="background:rgba(239,68,68,0.08); border:1px solid var(--danger-color); border-radius:8px; padding:0.75rem 1rem; margin-bottom:1rem;">
+          <div style="color:#fca5a5; font-weight:600; font-size:0.9rem;">Ganancia no tomada</div>
+          <div style="font-size:0.85rem; color:var(--text-secondary); margin-top:0.25rem;">
+            Esta posición llegó a valer ${fmtPrice(p.peakPriceSinceEntry)} por unidad (pico registrado desde que se activó este seguimiento).
+            Contra el precio actual, eso es ~$${p.gananciaNoTomadaUSD.toFixed(2)} (${p.gananciaNoTomadaPct.toFixed(1)}%) que no se tomaron.
+          </div>
+        </div>`
+      : '';
+
+    const levelsHtml = p.levels.map((l) => {
+      const status = l.sold
+        ? '<span class="badge active">Vendido</span>'
+        : (p.currentPrice !== null && p.currentPrice >= l.precioObjetivo
+            ? '<span class="badge active">Alcanzado</span>'
+            : '<span class="badge inactive">Pendiente</span>');
+      return `
+        <tr>
+          <td>+${l.pct}%</td>
+          <td>${fmtPrice(l.precioObjetivo)}</td>
+          <td>${l.sellPct}%</td>
+          <td>${status}</td>
+        </tr>
+      `;
+    }).join('');
+
+    let trailingHtml = '<span style="color:var(--text-secondary); font-size:0.85rem;">No armado todavía — se activa al cruzar el último nivel de la escalera.</span>';
+    if (p.trailingStop && p.trailingStop.armed) {
+      trailingHtml = p.trailingStop.triggered
+        ? `<span style="color:var(--danger-color); font-weight:600;">Disparado — revisa la pestaña Cartera para preparar la orden.</span>`
+        : `Precio máximo visto: ${fmtPrice(p.trailingStop.peakPrice)} · Stop en: ${fmtPrice(p.trailingStop.stopPrice)} · ATR x${p.trailingStop.multiplier || '—'}`;
+    }
+
+    body.innerHTML = `
+      <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:0.75rem 1.5rem; margin-bottom:1.25rem;">
+        <div><span style="color:var(--text-secondary); font-size:0.85rem;">Precio de entrada</span><br><strong>${fmtPrice(p.entryPrice)}</strong></div>
+        <div><span style="color:var(--text-secondary); font-size:0.85rem;">Precio actual</span><br><strong>${fmtPrice(p.currentPrice)}</strong></div>
+        <div><span style="color:var(--text-secondary); font-size:0.85rem;">Cambio desde entrada</span><br><strong style="color:${changeColor}">${changeTxt}</strong></div>
+        <div><span style="color:var(--text-secondary); font-size:0.85rem;">Valor actual</span><br><strong>${p.valorActual !== null ? '$' + p.valorActual.toFixed(2) : '—'}</strong></div>
+      </div>
+      ${gananciaNoTomadaHtml}
+      <div style="margin-bottom:0.5rem; font-weight:600; font-size:0.9rem;">Niveles de la escalera</div>
+      <table class="levels-table" style="width:100%; font-size:0.8rem; margin-bottom:1.25rem;">
+        <thead><tr><th>Nivel</th><th>Objetivo</th><th>% vender</th><th>Estado</th></tr></thead>
+        <tbody>${levelsHtml}</tbody>
+      </table>
+      <div style="margin-bottom:0.5rem; font-weight:600; font-size:0.9rem;">Trailing stop dinámico</div>
+      <div style="font-size:0.85rem;">${trailingHtml}</div>
+      ${p.notes ? `<div style="margin-top:1.25rem; font-size:0.85rem; color:var(--text-secondary);">${p.notes}</div>` : ''}
+    `;
+  };
 
   window.openOrderModal = async function (coin, levelIndex, levelPct) {
     orderModal.classList.add('active');
@@ -299,6 +377,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (data.error) return tbody.innerHTML = `<tr><td colspan="11" style="color: var(--danger-color)">Error: ${data.error}</td></tr>`;
       if (data.length === 0) return tbody.innerHTML = '<tr><td colspan="11" class="text-center">Sin posiciones en data/positions.json</td></tr>';
 
+      latestPortfolioData = data;
       const blockLabels = { core: 'Core', rotation: 'Rotación', experimental: 'Experimental' };
 
       tbody.innerHTML = data.map(p => {
@@ -324,7 +403,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         return `
           <tr>
-            <td><strong>${p.coin}</strong>${p.notes ? `<div style="font-size:0.75rem; color:var(--text-secondary); max-width:220px;">${p.notes}</div>` : ''}</td>
+            <td><strong style="cursor:pointer; text-decoration:underline dotted; text-underline-offset:3px;" onclick="openPositionDetail('${p.coin}')" title="Ver detalle consolidado">${p.coin}</strong>${p.notes ? `<div style="font-size:0.75rem; color:var(--text-secondary); max-width:220px;">${p.notes}</div>` : ''}</td>
             <td><span class="badge active">${blockLabels[p.block] || p.block}</span></td>
             <td>${p.holdingAmount.toFixed(6)}</td>
             <td>$${p.entryPrice.toLocaleString('en-US', { maximumFractionDigits: 6 })}</td>

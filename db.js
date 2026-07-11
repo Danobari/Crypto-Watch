@@ -38,6 +38,9 @@ function rowToPosition(row) {
     levels: row.levels || [],
     trailingStop: row.trailing_stop || null,
     trailingSellPct: row.trailing_sell_pct !== null ? Number(row.trailing_sell_pct) : 100,
+    peakPriceSinceEntry: row.peak_price_since_entry !== null && row.peak_price_since_entry !== undefined
+      ? Number(row.peak_price_since_entry)
+      : null,
   };
 }
 
@@ -50,6 +53,7 @@ function positionToRow(position) {
     levels: position.levels || [],
     trailing_stop: position.trailingStop || null,
     trailing_sell_pct: position.trailingSellPct ?? 100,
+    peak_price_since_entry: position.peakPriceSinceEntry ?? null,
     updated_at: new Date().toISOString(),
   };
 }

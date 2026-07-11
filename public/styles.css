@@ -456,3 +456,7 @@ option { background: var(--bg-dark); }
   padding-top: 1.5rem;
   border-top: 1px solid var(--border-glass);
 }
+
+.levels-table th, .levels-table td {
+  padding: 0.5rem 0.6rem;
+}
