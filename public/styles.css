@@ -298,7 +298,9 @@ h2 {
 /* Tables */
 .table-container {
   border-radius: 16px;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
 }
 
 table {
