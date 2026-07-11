@@ -206,6 +206,42 @@ export async function saveBinanceBanUntil(bannedUntilMs) {
   if (error) throw new Error(`Supabase (binance_ban_state): ${error.message}`);
 }
 
+// --- Snapshot de Binance (poblado por scripts/binance-local-poller.mjs) ---
+//
+// Confirmado con scripts/test-binance-local.mjs: la IP compartida de Render
+// está bloqueada por Binance, pero la IP de casa de Daniel funciona sin
+// problema. En vez de que el servidor en Render llame a Binance directo
+// (imposible mientras esa IP siga bloqueada), un script corriendo en su
+// computadora llama a Binance cada 5 minutos y guarda el resultado aquí.
+// binance.js, en el servidor, solo LEE este snapshot — nunca llama a
+// Binance por su cuenta.
+
+export async function getBinanceSnapshot() {
+  const { data, error } = await getClient().from('binance_snapshot').select('*').eq('id', 1).maybeSingle();
+  if (error) throw new Error(`Supabase (binance_snapshot): ${error.message}`);
+  if (!data) return { balances: [], tickers: {}, balancesUpdatedAt: null, tickersUpdatedAt: null };
+  return {
+    balances: data.balances || [],
+    tickers: data.tickers || {},
+    balancesUpdatedAt: data.balances_updated_at,
+    tickersUpdatedAt: data.tickers_updated_at,
+  };
+}
+
+export async function saveBinanceBalancesSnapshot(balances) {
+  const { error } = await getClient()
+    .from('binance_snapshot')
+    .upsert({ id: 1, balances, balances_updated_at: new Date().toISOString() });
+  if (error) throw new Error(`Supabase (binance_snapshot balances): ${error.message}`);
+}
+
+export async function saveBinanceTickersSnapshot(tickers) {
+  const { error } = await getClient()
+    .from('binance_snapshot')
+    .upsert({ id: 1, tickers, tickers_updated_at: new Date().toISOString() });
+  if (error) throw new Error(`Supabase (binance_snapshot tickers): ${error.message}`);
+}
+
 // --- Skills subidas desde el dashboard (sección Skills + IA) ---
 
 export async function getSkills() {

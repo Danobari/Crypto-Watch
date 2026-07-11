@@ -24,6 +24,57 @@ en el frontend ni en git). Las tablas ya tienen RLS activado sin
 políticas públicas: solo el backend, con la service_role key, puede leer
 o escribir.
 
+## Los datos de Binance vienen de tu computadora, no de Render
+
+Confirmado con `scripts/test-binance-local.mjs`: Binance bloquea la IP
+compartida que usa Render (comparte rango con otros clientes de la misma
+región, y algo ahí genera bans repetidos), pero tu IP de casa funciona sin
+ningún problema. Por eso el servidor en Render **ya no llama a Binance
+directamente** — `binance.js` ahí solo lee un "snapshot" guardado en
+Supabase (tabla `binance_snapshot`).
+
+Ese snapshot lo llena `scripts/binance-local-poller.mjs`, corriendo en tu
+Mac cada 5 minutos: pide tus saldos y los precios que hacen falta (tus
+posiciones, tus reglas, BTC/ETH para Ciclo de Mercado) directo a Binance
+desde tu propia IP, y los deja guardados. El resto de la app (dashboard,
+alertas por correo, Google Sheets) se queda funcionando 24/7 en Render sin
+depender de tu computadora — lo único que depende de que tu Mac esté
+encendida es que los *precios* se sigan actualizando. Si la apagas, el
+dashboard va a mostrar un aviso claro ("hace X min que no se actualiza")
+en vez de fallar en silencio o mostrar números viejos sin avisar.
+
+### Instalar el poller en tu Mac (una sola vez)
+
+1. Copia el archivo de configuración a la carpeta de tareas de macOS:
+
+   ```bash
+   cp "scripts/com.iahora.cryptowatch.binancepoller.plist" ~/Library/LaunchAgents/
+   ```
+
+2. Actívalo:
+
+   ```bash
+   launchctl load ~/Library/LaunchAgents/com.iahora.cryptowatch.binancepoller.plist
+   ```
+
+   Con esto corre de inmediato una vez, y luego cada 5 minutos, mientras tu
+   Mac esté encendida (no hace falta tener una Terminal abierta).
+
+3. Para revisar que esté funcionando:
+
+   ```bash
+   tail -f poller.log
+   ```
+
+   Deberías ver una línea nueva cada 5 minutos con ✅ saldos y ✅ precios
+   actualizados. Si ves ❌, el mensaje de error te dice qué falló.
+
+**Para desactivarlo** (si alguna vez quieres pausarlo):
+
+```bash
+launchctl unload ~/Library/LaunchAgents/com.iahora.cryptowatch.binancepoller.plist
+```
+
 ## Qué SÍ hace
 
 - Lee tus saldos reales de Binance (solo lectura).
@@ -86,10 +137,10 @@ ejemplo, de donde se migró este proyecto).
 - El plan gratis duerme el servicio tras 15 minutos sin tráfico (el
   siguiente request tarda 50s+ en despertar). Para evitarlo hay un monitor
   gratuito en UptimeRobot que hace ping cada 5 minutos.
-- `binance.js` incluye un freno de emergencia (circuit breaker): si
-  Binance devuelve un ban temporal (418/429), deja de insistir por un rato
-  en vez de reintentar sin parar — eso es lo que evita que un ban se
-  renueve solo en cada arranque del servicio.
+- El servidor en Render **ya no llama a Binance directamente** — su IP
+  compartida está bloqueada. Los datos reales vienen de tu computadora vía
+  `scripts/binance-local-poller.mjs` (ver sección "Los datos de Binance
+  vienen de tu computadora, no de Render" más abajo).
 
 ## Cartera (data/positions.json)
 
