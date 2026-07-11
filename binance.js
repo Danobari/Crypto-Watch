@@ -72,32 +72,76 @@ function bannedError() {
   return new Error(`Binance temporalmente bloqueado (ban activo, ~${mins} min restantes) — no se reintenta hasta que expire.`);
 }
 
-// --- Caché corta ---
-// Varias rutas del dashboard (cartera, mercado, ciclo) y el tick de fondo
-// piden los mismos tickers/saldos casi al mismo tiempo. Cachear unos
-// segundos evita mandar el mismo request varias veces en la misma ráfaga.
-const CACHE_TTL_MS = 15_000;
-const tickersCache = new Map(); // key: symbols ordenados -> { data, at }
+// --- Caché por símbolo + single-flight ---
+// Antes el cache de tickers se guardaba por la combinación EXACTA de
+// símbolos pedidos ("BTCUSDT,ETHUSDT" vs "ALGOUSDT,BTCUSDT,ETHUSDT,..."),
+// así que cada ruta del dashboard (Cartera, Mercado, Ciclo) y el tick de
+// fondo — que piden combinaciones ligeramente distintas de monedas — tenían
+// cada una su propio cache y su propio request a Binance, aunque los
+// símbolos se solaparan. Eso fue justo lo que volvió a disparar el ban
+// apenas expiraba uno: al abrir el dashboard en ese momento, dos o tres
+// rutas + el tick pedían tickers casi al mismo tiempo con distintas
+// combinaciones, cada una fallando el cache de la otra.
+//
+// Ahora el cache es por símbolo individual (compartido entre todas las
+// rutas) y además hay un "single-flight": si ya hay un request de tickers
+// en curso, cualquier otra llamada simultánea espera ese mismo resultado
+// en vez de mandar un request nuevo.
+const CACHE_TTL_MS = 20_000;
+const tickerCache = new Map(); // symbol -> { data, at }
 let balancesCache = null; // { data, at }
+let balancesInFlight = null;
+let tickersInFlight = null; // Promise de la ronda de fetch en curso (si hay una)
 
 // Lee los saldos reales de tu cuenta. Requiere una API key con permiso de
 // Lectura únicamente — este endpoint solo lee, nunca escribe ni ejecuta nada.
 export async function getAccountBalances(apiKey, apiSecret) {
-  if (await isBanned()) throw bannedError();
   if (balancesCache && Date.now() - balancesCache.at < CACHE_TTL_MS) {
     return balancesCache.data;
   }
+  if (balancesInFlight) return balancesInFlight;
 
-  const timestamp = Date.now();
-  const query = `timestamp=${timestamp}&recvWindow=5000`;
-  const signature = sign(query, apiSecret);
-  const url = `${BASE_URL}/api/v3/account?${query}&signature=${signature}`;
+  if (await isBanned()) throw bannedError();
+
+  balancesInFlight = (async () => {
+    const timestamp = Date.now();
+    const query = `timestamp=${timestamp}&recvWindow=5000`;
+    const signature = sign(query, apiSecret);
+    const url = `${BASE_URL}/api/v3/account?${query}&signature=${signature}`;
+    try {
+      const res = await axios.get(url, { headers: { 'X-MBX-APIKEY': apiKey } });
+      const data = res.data.balances
+        .map((b) => ({ asset: b.asset, free: parseFloat(b.free), locked: parseFloat(b.locked) }))
+        .filter((b) => b.free + b.locked > 0);
+      balancesCache = { data, at: Date.now() };
+      return data;
+    } catch (e) {
+      await registerBan(e);
+      throw e;
+    }
+  })();
+
   try {
-    const res = await axios.get(url, { headers: { 'X-MBX-APIKEY': apiKey } });
-    const data = res.data.balances
-      .map((b) => ({ asset: b.asset, free: parseFloat(b.free), locked: parseFloat(b.locked) }))
-      .filter((b) => b.free + b.locked > 0);
-    balancesCache = { data, at: Date.now() };
+    return await balancesInFlight;
+  } finally {
+    balancesInFlight = null;
+  }
+}
+
+// Precio y cambio 24h de un símbolo (endpoint público, no requiere API key).
+export async function getTicker24h(symbol) {
+  const cached = tickerCache.get(symbol);
+  if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.data;
+
+  if (await isBanned()) throw bannedError();
+  try {
+    const res = await axios.get(`${BASE_URL}/api/v3/ticker/24hr`, { params: { symbol } });
+    const data = {
+      symbol: res.data.symbol,
+      price: parseFloat(res.data.lastPrice),
+      changePercent: parseFloat(res.data.priceChangePercent),
+    };
+    tickerCache.set(symbol, { data, at: Date.now() });
     return data;
   } catch (e) {
     await registerBan(e);
@@ -105,70 +149,83 @@ export async function getAccountBalances(apiKey, apiSecret) {
   }
 }
 
-// Precio y cambio 24h de un símbolo (endpoint público, no requiere API key).
-export async function getTicker24h(symbol) {
-  if (await isBanned()) throw bannedError();
-  try {
-    const res = await axios.get(`${BASE_URL}/api/v3/ticker/24hr`, { params: { symbol } });
-    return {
-      symbol: res.data.symbol,
-      price: parseFloat(res.data.lastPrice),
-      changePercent: parseFloat(res.data.priceChangePercent),
-    };
-  } catch (e) {
-    await registerBan(e);
-    throw e;
-  }
-}
-
-// Precio y cambio 24h de varios símbolos a la vez (un solo request agrupado
-// en vez de uno por moneda) — reduce el peso/weight consumido en la API de
-// Binance y evita bans temporales (HTTP 418) por ráfagas de requests, algo
-// que pasa fácilmente cuando el servicio "despierta" en un plan gratuito y
-// dispara varias rutas (cartera, mercado, ciclo) casi al mismo tiempo.
+// Precio y cambio 24h de varios símbolos a la vez. El cache es por símbolo
+// individual (no por la combinación pedida), así que da igual si Cartera,
+// Mercado, Ciclo y el tick de fondo piden combinaciones distintas: los
+// símbolos que ya se pidieron hace poco (por cualquiera de ellos) se sirven
+// del cache, y solo se manda UN request agrupado por los que de verdad
+// faltan.
 export async function getTickers24h(symbols) {
-  const results = {};
-  const unique = Array.from(new Set(symbols)).sort();
-  if (unique.length === 0) return results;
+  const unique = Array.from(new Set(symbols));
+  if (unique.length === 0) return {};
 
-  const cacheKey = unique.join(',');
-  const cached = tickersCache.get(cacheKey);
-  if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
-    return cached.data;
+  const now = Date.now();
+  const results = {};
+  let stale = [];
+  for (const symbol of unique) {
+    const cached = tickerCache.get(symbol);
+    if (cached && now - cached.at < CACHE_TTL_MS) {
+      results[symbol] = cached.data;
+    } else {
+      stale.push(symbol);
+    }
+  }
+  if (stale.length === 0) return results;
+
+  // Single-flight: si ya hay una ronda de fetch en curso, esperarla y
+  // volver a mirar el cache en vez de mandar otro request en paralelo.
+  if (tickersInFlight) {
+    await tickersInFlight.catch(() => {});
+    return getTickers24h(symbols);
   }
 
-  if (await isBanned()) throw bannedError();
+  if (await isBanned()) {
+    if (Object.keys(results).length > 0) return results; // mejor datos parciales que nada
+    throw bannedError();
+  }
+
+  tickersInFlight = (async () => {
+    try {
+      const res = await axios.get(`${BASE_URL}/api/v3/ticker/24hr`, {
+        params: { symbols: JSON.stringify(stale.sort()) },
+      });
+      for (const t of res.data) {
+        const data = {
+          symbol: t.symbol,
+          price: parseFloat(t.lastPrice),
+          changePercent: parseFloat(t.priceChangePercent),
+        };
+        tickerCache.set(t.symbol, { data, at: Date.now() });
+      }
+    } catch (e) {
+      await registerBan(e);
+      console.error('No se pudo leer tickers agrupados, se intenta uno por uno:', e.message);
+
+      // Fallback: si el request agrupado falla y no fue por un ban (ej.
+      // algún símbolo inválido), se intenta uno por uno para no perder los
+      // que sí son válidos.
+      if (!(await isBanned())) {
+        for (const symbol of stale) {
+          try {
+            await getTicker24h(symbol);
+          } catch (err) {
+            console.error(`No se pudo leer ${symbol}:`, err.message);
+            if (await isBanned()) break;
+          }
+        }
+      }
+    }
+  })();
 
   try {
-    const res = await axios.get(`${BASE_URL}/api/v3/ticker/24hr`, {
-      params: { symbols: JSON.stringify(unique) },
-    });
-    for (const t of res.data) {
-      results[t.symbol] = {
-        symbol: t.symbol,
-        price: parseFloat(t.lastPrice),
-        changePercent: parseFloat(t.priceChangePercent),
-      };
-    }
-    tickersCache.set(cacheKey, { data: results, at: Date.now() });
-    return results;
-  } catch (e) {
-    await registerBan(e);
-    console.error('No se pudo leer tickers agrupados, se intenta uno por uno:', e.message);
+    await tickersInFlight;
+  } finally {
+    tickersInFlight = null;
   }
 
-  // Fallback: si el request agrupado falla (ej. algún símbolo inválido, y no
-  // por un ban ya registrado arriba), se intenta uno por uno para no perder
-  // los que sí son válidos.
-  if (await isBanned()) throw bannedError();
-  for (const symbol of unique) {
-    try {
-      results[symbol] = await getTicker24h(symbol);
-    } catch (e) {
-      console.error(`No se pudo leer ${symbol}:`, e.message);
-      if (await isBanned()) break; // ya no sigas insistiendo si se acaba de banear
-    }
+  for (const symbol of stale) {
+    const cached = tickerCache.get(symbol);
+    if (cached) results[symbol] = cached.data;
   }
-  tickersCache.set(cacheKey, { data: results, at: Date.now() });
   return results;
 }
