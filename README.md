@@ -262,3 +262,14 @@ razonables para pedirle a Claude Code o Codex desde aquí:
 - La API key de Binance debe quedarse en modo lectura para siempre. Si algún
   día quieres automatizar la ejecución, ese es un cambio deliberado y
   riesgoso — no algo que deba pasar por accidente.
+- **El dashboard pide usuario y contraseña** (HTTP Basic Auth) para que nadie
+  que encuentre el link de Render pueda ver tu cartera. Para activarlo:
+  1. En Render → tu servicio → **Environment**, agrega dos variables:
+     `DASH_USER` (el usuario que quieras) y `DASH_PASS` (una contraseña
+     fuerte, guárdala en tu gestor de contraseñas).
+  2. Guarda y deja que Render redespliegue (o dale "Manual Deploy" tú mismo).
+  3. La próxima vez que abras `crypto-watch-eq0d.onrender.com`, el navegador
+     mostrará un cuadro nativo pidiendo usuario/contraseña.
+  - Si `DASH_USER`/`DASH_PASS` no están configuradas, el sitio sigue
+    funcionando sin pedir login (útil en desarrollo local) — en producción
+    siempre deben estar puestas.

@@ -28,6 +28,36 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Protección con contraseña (HTTP Basic Auth). Sin esto, cualquiera con el
+// link de Render puede ver tu cartera completa. Se activa solo si
+// DASH_USER / DASH_PASS están definidas en el entorno (Render → Environment)
+// — si no están, la app sigue funcionando sin login, útil para desarrollo
+// local, pero en producción SIEMPRE deben estar configuradas.
+function timingSafeEqualStr(a, b) {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+app.use((req, res, next) => {
+  const user = process.env.DASH_USER;
+  const pass = process.env.DASH_PASS;
+  if (!user || !pass) return next(); // sin credenciales configuradas, no se exige login
+
+  const header = req.headers.authorization || '';
+  const [scheme, encoded] = header.split(' ');
+  if (scheme === 'Basic' && encoded) {
+    const [reqUser, reqPass] = Buffer.from(encoded, 'base64').toString().split(':');
+    if (timingSafeEqualStr(reqUser || '', user) && timingSafeEqualStr(reqPass || '', pass)) {
+      return next();
+    }
+  }
+
+  res.set('WWW-Authenticate', 'Basic realm="CryptoTracker"');
+  res.status(401).send('Acceso restringido.');
+});
+
 // Servir archivos estáticos del frontend
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
