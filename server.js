@@ -28,11 +28,23 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Protección con contraseña (HTTP Basic Auth). Sin esto, cualquiera con el
-// link de Render puede ver tu cartera completa. Se activa solo si
-// DASH_USER / DASH_PASS están definidas en el entorno (Render → Environment)
-// — si no están, la app sigue funcionando sin login, útil para desarrollo
-// local, pero en producción SIEMPRE deben estar configuradas.
+// Protección con contraseña. Sin esto, cualquiera con el link de Render
+// puede ver tu cartera completa. Se activa solo si DASH_USER / DASH_PASS
+// están definidas en el entorno (Render → Environment) — si no están, la
+// app sigue funcionando sin login, útil para desarrollo local, pero en
+// producción SIEMPRE deben estar configuradas.
+//
+// Usamos una pantalla de login propia (con el mismo look del dashboard) en
+// vez del cuadro nativo de HTTP Basic Auth que muestra el navegador — ese
+// cuadro no se puede personalizar y se ve como una alerta genérica del
+// sistema. Al validar usuario/contraseña se deja una cookie de sesión
+// firmada (HMAC), válida 30 días o hasta el próximo reinicio del proceso
+// (la clave de firma se genera nueva en cada arranque, así que un redeploy
+// cierra la sesión y toca volver a entrar — aceptable para uso personal).
+const SESSION_SECRET = crypto.randomBytes(32).toString('hex');
+const SESSION_COOKIE = 'ct_session';
+const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 días
+
 function timingSafeEqualStr(a, b) {
   const bufA = Buffer.from(a);
   const bufB = Buffer.from(b);
@@ -40,22 +52,144 @@ function timingSafeEqualStr(a, b) {
   return crypto.timingSafeEqual(bufA, bufB);
 }
 
+function signSessionPayload(payload) {
+  return crypto.createHmac('sha256', SESSION_SECRET).update(payload).digest('hex');
+}
+
+function createSessionToken() {
+  const payload = `ok.${Date.now() + SESSION_MAX_AGE_MS}`;
+  return `${payload}.${signSessionPayload(payload)}`;
+}
+
+function isValidSessionToken(token) {
+  if (!token) return false;
+  const parts = token.split('.');
+  if (parts.length !== 3) return false;
+  const [tag, expiresStr, sig] = parts;
+  if (!timingSafeEqualStr(sig, signSessionPayload(`${tag}.${expiresStr}`))) return false;
+  const expires = Number(expiresStr);
+  return tag === 'ok' && expires > Date.now();
+}
+
+function parseCookies(header) {
+  const out = {};
+  (header || '').split(';').forEach((pair) => {
+    const idx = pair.indexOf('=');
+    if (idx === -1) return;
+    out[pair.slice(0, idx).trim()] = decodeURIComponent(pair.slice(idx + 1).trim());
+  });
+  return out;
+}
+
+function loginPageHtml({ error } = {}) {
+  const errorHtml = error ? `<div class="login-error">${error}</div>` : '';
+  return `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Iniciar sesión — CryptoTracker</title>
+  <link rel="icon" type="image/png" href="assets/favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    body { align-items: center; justify-content: center; }
+    .login-card { width: 100%; max-width: 380px; padding: 2.5rem; border-radius: 20px; }
+    .login-card .logo { justify-content: center; margin-bottom: 2rem; }
+    .login-card h2 { font-size: 1.05rem; margin-bottom: 1.75rem; text-align: center; color: var(--text-secondary); font-weight: 400; }
+    .login-field { margin-bottom: 1.25rem; }
+    .login-field label { display: block; font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.4rem; }
+    .login-field input {
+      width: 100%; padding: 0.75rem 1rem; border-radius: 10px;
+      border: 1px solid var(--border-glass); background: rgba(255,255,255,0.03);
+      color: var(--text-primary); font-family: var(--font-main); font-size: 1rem;
+    }
+    .login-field input:focus { outline: none; border-color: var(--accent-color); box-shadow: 0 0 0 3px var(--accent-glow); }
+    .login-btn {
+      width: 100%; padding: 0.85rem; border-radius: 10px; border: none; margin-top: 0.5rem;
+      background: var(--accent-color); color: #fff; font-family: var(--font-main); font-size: 1rem; font-weight: 600;
+      cursor: pointer; transition: filter 0.15s;
+    }
+    .login-btn:hover { filter: brightness(1.1); }
+    .login-error {
+      background: rgba(239, 68, 68, 0.1); border: 1px solid var(--danger-color); color: #fca5a5;
+      padding: 0.65rem 1rem; border-radius: 8px; font-size: 0.85rem; margin-bottom: 1.25rem; text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-card glass-panel">
+    <div class="logo">
+      <img src="assets/iahora-bolt.png" alt="IAhora" class="logo-icon">
+      <h1>CryptoTracker</h1>
+    </div>
+    <h2>Acceso privado — ingresa tus credenciales</h2>
+    ${errorHtml}
+    <form method="POST" action="/login">
+      <div class="login-field">
+        <label for="user">Usuario</label>
+        <input type="text" id="user" name="user" autocomplete="username" required autofocus>
+      </div>
+      <div class="login-field">
+        <label for="pass">Contraseña</label>
+        <input type="password" id="pass" name="pass" autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="login-btn">Entrar</button>
+    </form>
+  </div>
+</body>
+</html>`;
+}
+
+app.use(express.urlencoded({ extended: false }));
+
+app.get('/login', (req, res) => {
+  if (!process.env.DASH_USER || !process.env.DASH_PASS) return res.redirect('/');
+  res.type('html').send(loginPageHtml());
+});
+
+app.post('/login', (req, res) => {
+  const user = process.env.DASH_USER;
+  const pass = process.env.DASH_PASS;
+  if (!user || !pass) return res.redirect('/');
+
+  const reqUser = (req.body && req.body.user) || '';
+  const reqPass = (req.body && req.body.pass) || '';
+  if (timingSafeEqualStr(reqUser, user) && timingSafeEqualStr(reqPass, pass)) {
+    res.cookie(SESSION_COOKIE, createSessionToken(), {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: req.secure || req.headers['x-forwarded-proto'] === 'https',
+      maxAge: SESSION_MAX_AGE_MS,
+      path: '/',
+    });
+    return res.redirect('/');
+  }
+  res.status(401).type('html').send(loginPageHtml({ error: 'Usuario o contraseña incorrectos.' }));
+});
+
+app.get('/logout', (req, res) => {
+  res.clearCookie(SESSION_COOKIE, { path: '/' });
+  res.redirect('/login');
+});
+
 app.use((req, res, next) => {
   const user = process.env.DASH_USER;
   const pass = process.env.DASH_PASS;
   if (!user || !pass) return next(); // sin credenciales configuradas, no se exige login
 
-  const header = req.headers.authorization || '';
-  const [scheme, encoded] = header.split(' ');
-  if (scheme === 'Basic' && encoded) {
-    const [reqUser, reqPass] = Buffer.from(encoded, 'base64').toString().split(':');
-    if (timingSafeEqualStr(reqUser || '', user) && timingSafeEqualStr(reqPass || '', pass)) {
-      return next();
-    }
-  }
+  // Estáticos que necesita la propia pantalla de login para verse bien.
+  if (req.path === '/styles.css' || req.path.startsWith('/assets/')) return next();
 
-  res.set('WWW-Authenticate', 'Basic realm="CryptoTracker"');
-  res.status(401).send('Acceso restringido.');
+  const cookies = parseCookies(req.headers.cookie);
+  if (isValidSessionToken(cookies[SESSION_COOKIE])) return next();
+
+  if (req.path.startsWith('/api/')) {
+    return res.status(401).json({ error: 'No autenticado. Inicia sesión de nuevo.' });
+  }
+  return res.redirect('/login');
 });
 
 // Servir archivos estáticos del frontend
