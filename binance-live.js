@@ -41,7 +41,21 @@ function tickerFromRow(t) {
     symbol: t.symbol,
     price: parseFloat(t.lastPrice),
     changePercent: parseFloat(t.priceChangePercent),
+    // Volumen 24h en USDT (quoteVolume) — más intuitivo para un umbral en $
+    // que el volumen en unidades de la moneda (volume).
+    quoteVolume: parseFloat(t.quoteVolume),
   };
+}
+
+// Cierres de velas diarias (endpoint público, sin límite de peso fuerte) —
+// usado para calcular SMA/EMA/RSI en Reglas. `limit` cierres más recientes,
+// del más viejo al más nuevo.
+export async function fetchDailyCloses(symbol, limit = 210) {
+  const res = await axios.get(`${BASE_URL}/api/v3/klines`, {
+    params: { symbol, interval: '1d', limit },
+  });
+  logRateLimitHeaders(res.headers, `klines(${symbol})`);
+  return res.data.map((k) => parseFloat(k[4])); // k[4] = close
 }
 
 // Precio y cambio 24h de varios símbolos a la vez (endpoint público). Si

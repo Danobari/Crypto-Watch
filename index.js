@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import axios from 'axios';
 import cron from 'node-cron';
-import { getAccountBalances, getTickers24h } from './binance.js';
+import { getAccountBalances, getTickers24h, getTechnicalCloses } from './binance.js';
 import {
   getRules,
   getPositions,
@@ -121,6 +121,16 @@ async function tick() {
     return; // sin precios no hay nada que evaluar en este tick — se reintenta en el próximo
   }
 
+  // Cierres diarios para reglas de SMA/EMA/RSI — si falla (ej. tu Mac apagada
+  // y el poller sin correr todavía), esas reglas simplemente no se evalúan
+  // este tick; las de precio/% siguen funcionando normal.
+  let technicalCloses = {};
+  try {
+    technicalCloses = await getTechnicalCloses(activeRules.map((r) => r.coin));
+  } catch (e) {
+    console.error('No se pudieron leer los indicadores técnicos (reglas de SMA/EMA/RSI se saltan este tick):', e.message);
+  }
+
   const triggeredState = await getTriggeredState();
 
   for (const rule of activeRules) {
@@ -129,7 +139,7 @@ async function tick() {
     const holding = balances.find((b) => b.asset === rule.coin.toUpperCase());
     const holdingAmount = holding ? holding.free : 0;
 
-    const hitResult = evaluateRule(rule, ticker, holdingAmount);
+    const hitResult = evaluateRule(rule, ticker, holdingAmount, technicalCloses[rule.coin.toUpperCase()]);
     const wasTriggered = !!triggeredState[rule.id];
 
     if (hitResult && !wasTriggered) {

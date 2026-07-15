@@ -16,7 +16,7 @@
 // lanzan un error claro en vez de mostrar números desactualizados en
 // silencio.
 
-import { getBinanceSnapshot } from './db.js';
+import { getBinanceSnapshot, getTechnicalSnapshot } from './db.js';
 
 const STALE_MS = 15 * 60 * 1000; // 15 min — generoso sobre el ciclo de 5 min del poller
 
@@ -60,6 +60,23 @@ export async function getTickers24h(symbols) {
   const results = {};
   for (const symbol of unique) {
     if (snap.tickers[symbol]) results[symbol] = snap.tickers[symbol];
+  }
+  return results;
+}
+
+// Cierres diarios por moneda (para SMA/EMA/RSI en Reglas). Solo trae las
+// monedas que ya haya guardado el poller (ej. no todas las reglas tienen
+// historial todavía en su primer ciclo) — quien llame decide qué hacer si
+// falta una moneda (mismo criterio que getTickers24h con símbolos ausentes).
+export async function getTechnicalCloses(coins) {
+  const snap = await getTechnicalSnapshot();
+  if (!snap.updatedAt || Date.now() - new Date(snap.updatedAt).getTime() > STALE_MS) {
+    throw staleError('Indicadores técnicos', snap.updatedAt);
+  }
+  const results = {};
+  for (const coin of coins) {
+    const key = coin.toUpperCase();
+    if (snap.closes[key]) results[key] = snap.closes[key];
   }
   return results;
 }

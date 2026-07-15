@@ -12,8 +12,15 @@
 // puedes correr a mano en cualquier momento: node scripts/binance-local-poller.mjs
 
 import 'dotenv/config';
-import { fetchAccountBalances, fetchTickers24h } from '../binance-live.js';
-import { getRules, getPositions, getWatchlist, saveBinanceBalancesSnapshot, saveBinanceTickersSnapshot } from '../db.js';
+import { fetchAccountBalances, fetchTickers24h, fetchDailyCloses } from '../binance-live.js';
+import {
+  getRules,
+  getPositions,
+  getWatchlist,
+  saveBinanceBalancesSnapshot,
+  saveBinanceTickersSnapshot,
+  saveTechnicalSnapshot,
+} from '../db.js';
 import { symbolFor } from '../rules.js';
 
 function log(msg) {
@@ -59,6 +66,26 @@ async function poll() {
     const tickers = await fetchTickers24h(symbols);
     await saveBinanceTickersSnapshot(tickers);
     log(`✅ Precios actualizados (${Object.keys(tickers).length} símbolo(s)).`);
+
+    // Cierres diarios — solo para las monedas con reglas activas, que son
+    // las únicas que pueden usar condiciones de SMA/EMA/RSI/volumen. Se
+    // descartan por separado los que fallen (ej. un símbolo raro sin
+    // suficiente historial) para no perder los demás.
+    const ruleCoins = Array.from(new Set(rules.map((r) => r.coin.toUpperCase())));
+    if (ruleCoins.length > 0) {
+      const closesByCoin = {};
+      for (const coin of ruleCoins) {
+        try {
+          closesByCoin[coin] = await fetchDailyCloses(symbolFor(coin), 210);
+        } catch (e) {
+          log(`   ⚠️  No se pudieron traer velas de ${coin}: ${e.response?.data?.msg || e.message}`);
+        }
+      }
+      if (Object.keys(closesByCoin).length > 0) {
+        await saveTechnicalSnapshot(closesByCoin);
+        log(`✅ Indicadores técnicos actualizados (${Object.keys(closesByCoin).length} moneda(s)).`);
+      }
+    }
   } catch (e) {
     log(`❌ Error leyendo precios: ${e.response?.data?.msg || e.message}`);
   }

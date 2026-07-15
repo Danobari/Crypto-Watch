@@ -268,6 +268,28 @@ export async function saveBinanceTickersSnapshot(tickers) {
   if (error) throw new Error(`Supabase (binance_snapshot tickers): ${error.message}`);
 }
 
+// --- Snapshot de cierres diarios (para Reglas con SMA/EMA/RSI) ---
+//
+// Igual que binance_snapshot: lo llena scripts/binance-local-poller.mjs
+// (velas diarias de Binance, mismo motivo — Render no puede llamar a
+// Binance directo). Guarda el arreglo de cierres por moneda; el cálculo de
+// SMA/EMA/RSI se hace en indicators.js con el período que pida cada regla,
+// no se precalculan aquí valores fijos.
+
+export async function getTechnicalSnapshot() {
+  const { data, error } = await getClient().from('technical_snapshot').select('*').eq('id', 1).maybeSingle();
+  if (error) throw new Error(`Supabase (technical_snapshot): ${error.message}`);
+  if (!data) return { closes: {}, updatedAt: null };
+  return { closes: data.closes || {}, updatedAt: data.updated_at };
+}
+
+export async function saveTechnicalSnapshot(closesByCoin) {
+  const { error } = await getClient()
+    .from('technical_snapshot')
+    .upsert({ id: 1, closes: closesByCoin, updated_at: new Date().toISOString() });
+  if (error) throw new Error(`Supabase (technical_snapshot): ${error.message}`);
+}
+
 // --- Skills subidas desde el dashboard (sección Skills + IA) ---
 
 export async function getSkills() {
