@@ -12,7 +12,7 @@ import {
   getAlertsLog,
   appendAlert,
 } from './db.js';
-import { sendAlertEmail } from './notify.js';
+import { sendAlert } from './notify.js';
 import { evaluateRule, symbolFor } from './rules.js';
 import {
   evaluateLadder,
@@ -154,7 +154,7 @@ async function tick() {
           `\nTú decides si la colocas — esto no ejecuta nada en Binance.`;
       }
       console.log(body);
-      await sendAlertEmail(`[crypto-watch] ${rule.coin} — regla disparada`, body);
+      await sendAlert(`[crypto-watch] ${rule.coin} — regla disparada`, body);
       await appendAlert({ ruleId: rule.id, message: body });
     } else if (!hitResult && wasTriggered) {
       triggeredState[rule.id] = false;
@@ -207,7 +207,7 @@ async function tick() {
           body += `\n\n${hit.level.action || 'Revisar contexto antes de decidir.'}`;
         }
         console.log(body);
-        await sendAlertEmail(`[crypto-watch] ${position.coin} — nivel +${hit.level.pct}% alcanzado`, body);
+        await sendAlert(`[crypto-watch] ${position.coin} — nivel +${hit.level.pct}% alcanzado`, body);
         await appendAlert({ ruleId: stateKey, message: body });
       }
     }
@@ -250,7 +250,7 @@ async function tick() {
           `\nAbrir en Binance: ${order.binanceLink}` +
           `\nTú decides si la colocas y a qué precio — esto no ejecuta nada en Binance.`;
         console.log(body);
-        await sendAlertEmail(`[crypto-watch] ${position.coin} — trailing stop disparado`, body);
+        await sendAlert(`[crypto-watch] ${position.coin} — trailing stop disparado`, body);
         await appendAlert({ ruleId: trailKey, message: body });
       }
     }

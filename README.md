@@ -109,6 +109,27 @@ launchctl unload ~/Library/LaunchAgents/com.iahora.cryptowatch.binancepoller.pli
    https://myaccount.google.com/apppasswords
 2. Esa contraseña (no la de tu cuenta) va en `GMAIL_APP_PASSWORD`.
 
+## 2.1. Alertas por Telegram (opcional, además del correo)
+
+Más ligero que WhatsApp — no necesita verificación de negocio ni aprobación
+de Meta, solo un bot propio:
+
+1. En Telegram, busca **@BotFather** y mándale `/newbot`. Sigue las
+   instrucciones (nombre del bot, luego un usuario único terminado en `bot`).
+2. Al final te da un **token** — cópialo en `TELEGRAM_BOT_TOKEN`.
+3. Abre una conversación con tu bot nuevo (búscalo por el usuario que le
+   pusiste) y mándale cualquier mensaje, ej. "hola".
+4. Para obtener tu **chat_id**, abre en el navegador (reemplaza `<TOKEN>` por
+   el tuyo):
+   `https://api.telegram.org/bot<TOKEN>/getUpdates`
+   Busca en la respuesta `"chat":{"id":123456789,...}` — ese número es tu
+   `TELEGRAM_CHAT_ID`.
+5. Agrega ambos valores en tu `.env` local y en Render → Environment.
+
+Con eso, cada alerta que antes solo llegaba por correo llega también a
+Telegram — si uno de los dos canales falla, el otro sigue funcionando (no
+dependen uno del otro).
+
 ## 3. Instalar y configurar
 
 ```bash
