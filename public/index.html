@@ -123,6 +123,14 @@
         <div class="cards-grid" id="cycle-grid">
           <div class="loading-state">Consultando ciclo de mercado...</div>
         </div>
+        <div class="glass-panel table-container" id="cbbi-indicators-panel" style="margin-top: 1.5rem; padding: 1.5rem; display: none;">
+          <h3 style="margin-bottom: 0.25rem; font-size: 1.1rem;">Los 9 indicadores individuales del CBBI</h3>
+          <p style="margin-bottom: 1rem; color: var(--text-secondary); font-size: 0.85rem;">Cada uno normalizado 0-100. Solo informativo — el score agregado de arriba es su promedio, y nada de esto dispara alertas por sí solo.</p>
+          <table class="levels-table" id="cbbi-indicators-table" style="width: 100%;">
+            <thead><tr><th>Indicador</th><th>Valor</th></tr></thead>
+            <tbody id="cbbi-indicators-body"></tbody>
+          </table>
+        </div>
         <div class="glass-panel table-container" style="margin-top: 1.5rem; padding: 1.5rem;">
           <h3 style="margin-bottom: 1rem; font-size: 1.1rem;">Fase de ciclo (manual — según tu GPT de indicadores on-chain)</h3>
           <div class="form-row">

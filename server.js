@@ -507,6 +507,7 @@ app.get('/api/cycle', async (req, res) => {
       ethChange24h: eth ? eth.changePercent : null,
       signal,
       cbbi: cbbi ? { score: cbbi.score, asOf: cbbi.asOf, label: cbbiPhaseLabel(cbbi.score) } : null,
+      cbbiIndicators: cbbi ? cbbi.indicators : null,
       cyclePhase,
       altseasonIndexLink: 'https://www.blockchaincenter.net/altcoin-season-index/',
     });

@@ -547,6 +547,21 @@ document.addEventListener('DOMContentLoaded', () => {
           ? `Última actualización: ${new Date(data.cyclePhase.updatedAt).toLocaleString()}`
           : 'Todavía no se ha actualizado.';
       }
+
+      const indicatorsPanel = document.getElementById('cbbi-indicators-panel');
+      const indicatorsBody = document.getElementById('cbbi-indicators-body');
+      if (data.cbbiIndicators && data.cbbiIndicators.length) {
+        indicatorsBody.innerHTML = data.cbbiIndicators
+          .map((ind) => `
+            <tr>
+              <td>${ind.label}</td>
+              <td>${ind.value.toFixed(0)}/100</td>
+            </tr>
+          `).join('');
+        indicatorsPanel.style.display = '';
+      } else {
+        indicatorsPanel.style.display = 'none';
+      }
     } catch (e) { grid.innerHTML = `<div class="loading-state" style="color: var(--danger-color)">Error de conexión</div>`; }
   }
 
